@@ -3,4 +3,4 @@
 window.ORANGE_TREE_DATABASE_URL =
   localStorage.getItem("orangeTreeDatabaseUrl") ||
   window.ORANGE_TREE_DATABASE_URL ||
-  "http://localhost:8787";
+  "https://orange-tree-database.vercel.app";
