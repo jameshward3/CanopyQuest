@@ -28,7 +28,8 @@
   const state = {
     stream: null, location: null, heading: null, trees: [], boundary: FALLBACK_BOUNDARY,
     profile: null, dashboard: null, analysis: null, matchedTree: null, demo: false,
-    scanning: false, syncing: false, queueCount: 0, lastFrameHash: null
+    scanning: false, syncing: false, queueCount: 0, lastFrameHash: null,
+    uploadedImage: null, uploadedObjectUrl: null, uploadedFileMeta: null
   };
   const elements = {};
   [
@@ -42,7 +43,8 @@
     "speciesValue", "confidenceValue", "heightValue", "canopyValue", "dbhValue",
     "healthValue", "modelLabel", "analysisCard", "speciesInput", "conditionInput",
     "heightInput", "canopyInput", "dbhInput", "notesInput", "matchNotice", "questList",
-    "questBadge", "leaderList", "toast", "rewardBurst", "shareButton"
+    "questBadge", "leaderList", "toast", "rewardBurst", "shareButton", "photoPreview",
+    "photoInput", "choosePhotoButton"
   ].forEach(id => { elements[id] = document.getElementById(id); });
 
   function uuid() {
@@ -55,6 +57,98 @@
     return String(value ?? "").replace(/[&<>"']/g, character => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
     })[character]);
+  }
+  function parseExifGps(arrayBuffer) {
+    if (!arrayBuffer || typeof arrayBuffer.byteLength !== "number" || arrayBuffer.byteLength < 16) return null;
+    let view;
+    try { view = new DataView(arrayBuffer); } catch (_error) { return null; }
+    if (view.getUint16(0, false) !== 0xffd8) return null;
+
+    let markerOffset = 2;
+    while (markerOffset + 4 <= view.byteLength) {
+      if (view.getUint8(markerOffset) !== 0xff) break;
+      const marker = view.getUint8(markerOffset + 1);
+      if (marker === 0xd9 || marker === 0xda) break;
+      if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+        markerOffset += 2;
+        continue;
+      }
+      const segmentLength = view.getUint16(markerOffset + 2, false);
+      if (segmentLength < 2 || markerOffset + 2 + segmentLength > view.byteLength) break;
+      const dataStart = markerOffset + 4;
+      const segmentEnd = markerOffset + 2 + segmentLength;
+      const isExif = marker === 0xe1
+        && dataStart + 6 <= segmentEnd
+        && view.getUint32(dataStart, false) === 0x45786966
+        && view.getUint16(dataStart + 4, false) === 0;
+      if (isExif) {
+        const tiffStart = dataStart + 6;
+        if (tiffStart + 8 > segmentEnd) return null;
+        const byteOrder = view.getUint16(tiffStart, false);
+        const littleEndian = byteOrder === 0x4949;
+        if (!littleEndian && byteOrder !== 0x4d4d) return null;
+        const readU16 = offset => {
+          if (offset < tiffStart || offset + 2 > segmentEnd) throw new RangeError("Invalid EXIF offset");
+          return view.getUint16(offset, littleEndian);
+        };
+        const readU32 = offset => {
+          if (offset < tiffStart || offset + 4 > segmentEnd) throw new RangeError("Invalid EXIF offset");
+          return view.getUint32(offset, littleEndian);
+        };
+        try {
+          if (readU16(tiffStart + 2) !== 42) return null;
+          const ifd0 = tiffStart + readU32(tiffStart + 4);
+          const entryCount = readU16(ifd0);
+          let gpsIfd = null;
+          for (let index = 0; index < entryCount; index += 1) {
+            const entry = ifd0 + 2 + index * 12;
+            if (readU16(entry) === 0x8825) {
+              gpsIfd = tiffStart + readU32(entry + 8);
+              break;
+            }
+          }
+          if (!gpsIfd) return null;
+          const gpsEntries = readU16(gpsIfd);
+          const tags = new Map();
+          for (let index = 0; index < gpsEntries; index += 1) {
+            const entry = gpsIfd + 2 + index * 12;
+            const tag = readU16(entry);
+            const type = readU16(entry + 2);
+            const count = readU32(entry + 4);
+            const valueOffset = type === 2 && count <= 4 ? entry + 8 : tiffStart + readU32(entry + 8);
+            tags.set(tag, { type, count, valueOffset });
+          }
+          const readReference = tag => {
+            const item = tags.get(tag);
+            if (!item || item.type !== 2 || item.valueOffset >= segmentEnd) return "";
+            return String.fromCharCode(view.getUint8(item.valueOffset)).toUpperCase();
+          };
+          const readCoordinate = tag => {
+            const item = tags.get(tag);
+            if (!item || item.type !== 5 || item.count < 3) return null;
+            const values = [];
+            for (let index = 0; index < 3; index += 1) {
+              const numerator = readU32(item.valueOffset + index * 8);
+              const denominator = readU32(item.valueOffset + index * 8 + 4);
+              if (!denominator) return null;
+              values.push(numerator / denominator);
+            }
+            return values[0] + values[1] / 60 + values[2] / 3600;
+          };
+          let latitude = readCoordinate(2);
+          let longitude = readCoordinate(4);
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+          if (readReference(1) === "S") latitude *= -1;
+          if (readReference(3) === "W") longitude *= -1;
+          if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+          return { latitude, longitude };
+        } catch (_error) {
+          return null;
+        }
+      }
+      markerOffset = segmentEnd;
+    }
+    return null;
   }
   function toast(message, duration = 3200) {
     elements.toast.textContent = message;
@@ -121,13 +215,19 @@
       elements.accuracyText.textContent = "GPS —";
       elements.wardText.textContent = "WARD —";
       elements.coordinatesText.textContent = "LOCATION NEEDED";
+      elements.priorityText.textContent = state.uploadedImage ? "PHOTO READY · GPS NEEDED" : "CHOOSE PHOTO OR FIELD MODE";
+      drawMap();
       return;
     }
-    elements.accuracyText.textContent = `GPS ±${Math.round(location.accuracy || 0)} m`;
+    elements.accuracyText.textContent = location.source === "photo-exif"
+      ? "PHOTO GPS"
+      : `GPS ±${Math.round(location.accuracy || 0)} m`;
     elements.wardText.textContent = `WARD ${wardFor(location.latitude, location.longitude)}`;
     elements.coordinatesText.textContent = `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
     const nearest = nearestPriority(location);
-    elements.priorityText.textContent = `${nearest.area.label} · ${Math.round(nearest.distance)} m`;
+    elements.priorityText.textContent = location.source === "photo-exif"
+      ? `${nearest.area.label} · PHOTO GPS`
+      : `${nearest.area.label} · ${Math.round(nearest.distance)} m`;
     drawMap();
   }
   function radians(value) { return value * Math.PI / 180; }
@@ -347,6 +447,14 @@
       video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false
     });
+    if (state.uploadedObjectUrl) URL.revokeObjectURL(state.uploadedObjectUrl);
+    if (state.location?.source === "photo-exif") state.location = null;
+    state.uploadedImage = null;
+    state.uploadedObjectUrl = null;
+    state.uploadedFileMeta = null;
+    elements.photoPreview.hidden = true;
+    elements.photoPreview.removeAttribute("src");
+    updateLocationHud();
     elements.camera.srcObject = state.stream;
     await elements.camera.play();
   }
@@ -359,7 +467,8 @@
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
           altitude: position.coords.altitude,
-          capturedAt: new Date(position.timestamp).toISOString()
+          capturedAt: new Date(position.timestamp).toISOString(),
+          source: "device-gps"
         };
         updateLocationHud();
         resolve(state.location);
@@ -401,8 +510,10 @@
     }
     if (!cameraReady) toast("Camera was not granted. The scanner will use the visual preview.");
     if (!locationReady) toast("Location is required before a real capture can be submitted.");
-    elements.captureHeadline.textContent = locationReady ? "TREE IN RANGE" : "LOCATION NEEDED";
-    elements.captureInstruction.textContent = "Hold steady, then tap the scanner";
+    elements.captureHeadline.textContent = locationReady ? "TREE IN RANGE" : "CAMERA READY";
+    elements.captureInstruction.textContent = locationReady
+      ? "Hold steady, then tap the scanner"
+      : "Scan now; location is requested only when you submit";
     elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
   }
   function startDemo() {
@@ -414,16 +525,80 @@
     elements.captureButton.querySelector(".capture-label").textContent = "SCAN";
     if (elements.permissionDialog.open) elements.permissionDialog.close();
   }
+  async function choosePhoto(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    elements.choosePhotoButton.disabled = true;
+    elements.choosePhotoButton.textContent = "READING PHOTO…";
+    try {
+      const gps = parseExifGps(await file.arrayBuffer());
+      if (state.uploadedObjectUrl) URL.revokeObjectURL(state.uploadedObjectUrl);
+      const objectUrl = URL.createObjectURL(file);
+      elements.photoPreview.src = objectUrl;
+      await new Promise((resolve, reject) => {
+        elements.photoPreview.onload = resolve;
+        elements.photoPreview.onerror = () => reject(new Error("This photo format is not supported by this browser."));
+      });
+      state.demo = false;
+      state.uploadedObjectUrl = objectUrl;
+      state.uploadedImage = elements.photoPreview;
+      state.uploadedFileMeta = {
+        type: file.type || "image",
+        size: file.size,
+        lastModified: file.lastModified || Date.now(),
+        gpsReadFromExif: Boolean(gps)
+      };
+      elements.photoPreview.hidden = false;
+      if (gps) {
+        state.location = {
+          ...gps,
+          accuracy: 15,
+          capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
+          source: "photo-exif"
+        };
+      } else if (state.location?.source === "photo-exif") {
+        state.location = null;
+      }
+      updateLocationHud();
+      if (elements.permissionDialog.open) elements.permissionDialog.close();
+      elements.captureHeadline.textContent = gps ? "PHOTO READY · GPS FOUND" : "PHOTO READY";
+      elements.captureInstruction.textContent = gps
+        ? "Tap the scanner to identify this tree"
+        : "Tap to identify; location will be requested only when you submit";
+      elements.captureButton.querySelector(".capture-label").textContent = "SCAN PHOTO";
+      toast(gps ? "Photo GPS found. Ready to scan." : "Photo ready. No GPS metadata was found.");
+    } catch (error) {
+      console.warn("Photo could not be opened", error);
+      toast(error.message || "That photo could not be opened. Try a JPEG or PNG.");
+    } finally {
+      elements.choosePhotoButton.disabled = false;
+      elements.choosePhotoButton.textContent = "TAKE OR CHOOSE A PHOTO";
+    }
+  }
+  function drawImageCover(context, image, width, height) {
+    const sourceWidth = image.naturalWidth || image.videoWidth || width;
+    const sourceHeight = image.naturalHeight || image.videoHeight || height;
+    const scale = Math.max(width / sourceWidth, height / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  }
   function captureFrame() {
     const canvas = elements.captureCanvas;
     const video = elements.camera;
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 960;
+    const sourceWidth = state.uploadedImage?.naturalWidth || video.videoWidth || 640;
+    const sourceHeight = state.uploadedImage?.naturalHeight || video.videoHeight || 960;
+    const scale = Math.min(1, 1600 / Math.max(sourceWidth, sourceHeight));
+    const width = Math.round(sourceWidth * scale);
+    const height = Math.round(sourceHeight * scale);
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (video.readyState >= 2 && video.videoWidth) {
-      context.drawImage(video, 0, 0, width, height);
+    if (state.uploadedImage) {
+      drawImageCover(context, state.uploadedImage, width, height);
+    } else if (video.readyState >= 2 && video.videoWidth) {
+      drawImageCover(context, video, width, height);
     } else {
       const gradient = context.createLinearGradient(0, 0, 0, height);
       gradient.addColorStop(0, "#1d5444");
@@ -458,15 +633,9 @@
   }
   async function scanTree() {
     if (state.scanning) return;
-    if (!state.stream && !state.demo && !state.location) {
+    if (!state.stream && !state.demo && !state.uploadedImage) {
       elements.permissionDialog.showModal();
       return;
-    }
-    if (!state.location && !state.demo) {
-      try { await requestLocation(); } catch (_error) {
-        toast("A precise location is required for a field capture.");
-        return;
-      }
     }
     state.scanning = true;
     elements.app.classList.add("scanning");
@@ -495,7 +664,9 @@
       elements.notesInput.value = "";
       elements.matchNotice.textContent = state.matchedTree
         ? `Possible match: ${state.matchedTree.tree.id} · ${Math.round(state.matchedTree.distance)} m away · ${Math.round(state.matchedTree.confidence * 100)}% match confidence.`
-        : "No existing inventory tree matched within the GPS-aware capture radius. This will be routed as a possible new tree.";
+        : state.location
+          ? "No existing inventory tree matched within the GPS-aware capture radius. This will be routed as a possible new tree."
+          : "Photo analyzed. Location will be requested only when you confirm, so the image capture is never blocked by GPS.";
       elements.confirmDialog.showModal();
     } catch (error) {
       console.error(error);
@@ -514,8 +685,14 @@
       latitude: state.location.latitude, longitude: state.location.longitude,
       gpsAccuracy: Number(state.location.accuracy || 0),
       heading: Number.isFinite(state.heading) ? state.heading : null,
-      capturedAt: new Date().toISOString(), imageReference: null, imageHash: state.lastFrameHash,
-      imageMetadata: { width: elements.captureCanvas.width, height: elements.captureCanvas.height, exifRetained: false },
+      capturedAt: state.location.capturedAt || new Date().toISOString(), imageReference: null, imageHash: state.lastFrameHash,
+      imageMetadata: {
+        width: elements.captureCanvas.width,
+        height: elements.captureCanvas.height,
+        exifRetained: false,
+        gpsReadFromExif: Boolean(state.uploadedFileMeta?.gpsReadFromExif),
+        locationSource: state.location.source || "unknown"
+      },
       aiModel: analysis.model, aiModelVersion: analysis.version, aiProvider: analysis.provider,
       speciesPrediction: analysis.speciesPrediction, speciesConfidence: analysis.speciesConfidence,
       confirmedSpecies,
@@ -658,12 +835,30 @@
       openProfileDialog(true);
       return;
     }
+    const submitButton = elements.confirmForm.querySelector('button[type="submit"]');
+    if (!state.location) {
+      submitButton.disabled = true;
+      submitButton.textContent = "GETTING GPS…";
+      try {
+        toast("No GPS was stored in this photo. Allow location once to place the tree.");
+        await requestLocation();
+        state.matchedTree = matchNearbyTree(state.location);
+        submitButton.disabled = false;
+        submitButton.textContent = "CONFIRM + SYNC";
+      } catch (_error) {
+        toast("Photo analyzed and kept open. Location is needed only to sync the tree.", 5200);
+        submitButton.disabled = false;
+        submitButton.textContent = "CONFIRM + SYNC";
+        return;
+      }
+    }
     if (!pointInPolygon(state.location)) {
       toast("Captures must be inside the City of Orange boundary. This draft was not submitted.", 5200);
+      submitButton.disabled = false;
+      submitButton.textContent = "CONFIRM + SYNC";
       return;
     }
     const capture = buildCapture();
-    const submitButton = elements.confirmForm.querySelector('button[type="submit"]');
     submitButton.disabled = true;
     submitButton.textContent = "SYNCING…";
     try {
@@ -686,10 +881,11 @@
       submitButton.textContent = "CONFIRM + SYNC";
     }
   }
-  function openProfileDialog(afterCapture = false) {
+  function openProfileDialog(afterCapture = false, firstRun = false) {
     elements.displayNameInput.value = state.profile?.displayName || "";
     elements.communityNotice.checked = Boolean(state.profile);
     elements.profileDialog.dataset.afterCapture = afterCapture ? "true" : "false";
+    elements.profileDialog.dataset.firstRun = firstRun ? "true" : "false";
     elements.profileDialog.showModal();
   }
   async function saveProfile(event) {
@@ -715,12 +911,18 @@
       submitButton.disabled = false;
       submitButton.textContent = "SAVE PROFILE";
       const resume = elements.profileDialog.dataset.afterCapture === "true";
+      const firstRun = elements.profileDialog.dataset.firstRun === "true";
       elements.profileDialog.close();
       if (resume && state.analysis) elements.confirmDialog.showModal();
+      else if (firstRun && !state.stream && !state.demo) {
+        setTimeout(() => elements.permissionDialog.showModal(), 120);
+      }
     }
   }
   function registerEvents() {
     elements.enableFieldMode.addEventListener("click", enableFieldMode);
+    elements.choosePhotoButton.addEventListener("click", () => elements.photoInput.click());
+    elements.photoInput.addEventListener("change", choosePhoto);
     elements.demoModeButton.addEventListener("click", startDemo);
     elements.captureButton.addEventListener("click", scanTree);
     elements.profileButton.addEventListener("click", () => openProfileDialog(false));
@@ -765,11 +967,13 @@
     await updateQueueCount();
     Promise.allSettled([loadBoundary(), loadSharedData(), registerServiceWorker(), flushQueue()]);
     setTimeout(() => {
-      if (!state.stream && !state.demo && !elements.permissionDialog.open) elements.permissionDialog.showModal();
+      if (!state.profile) openProfileDialog(false, true);
+      else if (!state.stream && !state.demo && !elements.permissionDialog.open) elements.permissionDialog.showModal();
     }, 450);
-    if (!state.profile) setTimeout(() => toast("Create a trail name before your first real capture."), 1800);
   }
 
-  window.CanopyQuest = Object.freeze({ distanceMeters, pointInPolygon, sanitizeName, levelProgress, matchNearbyTree });
+  window.CanopyQuest = Object.freeze({
+    distanceMeters, pointInPolygon, sanitizeName, levelProgress, matchNearbyTree, parseExifGps
+  });
   init();
 })();

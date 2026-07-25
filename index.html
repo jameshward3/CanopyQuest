@@ -16,13 +16,14 @@
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="preconnect" href="https://orange-tree-database.vercel.app">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=2.1.0">
 </head>
 <body>
   <a class="skip-link" href="#captureButton">Skip to capture</a>
 
   <main class="app-shell" id="app">
     <video id="camera" class="camera-feed" playsinline muted aria-label="Live rear camera view"></video>
+    <img id="photoPreview" class="camera-feed photo-preview" alt="Selected tree photo" hidden>
     <canvas id="captureCanvas" hidden></canvas>
     <div class="camera-fallback" aria-hidden="true"></div>
     <div class="camera-shade" aria-hidden="true"></div>
@@ -102,7 +103,7 @@
     <section class="capture-zone" aria-label="Capture controls">
       <div class="capture-status" id="captureStatus">
         <strong id="captureHeadline">TREE SCANNER READY</strong>
-        <span id="captureInstruction">Enable camera and location to begin</span>
+        <span id="captureInstruction">Use the camera or choose a tree photo to begin</span>
         <em id="rewardPreview">+120 XP · FIELD CAPTURE</em>
         <button class="share-button" id="shareButton" type="button" hidden>SHARE FIELD CARD ↗</button>
       </div>
@@ -137,6 +138,8 @@
         <div><span>↗</span><p><strong>Direction</strong><small>Optional. Improves the heading cone and field record.</small></p></div>
       </div>
       <button class="primary-button" id="enableFieldMode" value="cancel" type="button">ENABLE FIELD MODE</button>
+      <button class="secondary-button photo-button" id="choosePhotoButton" type="button">TAKE OR CHOOSE A PHOTO</button>
+      <input id="photoInput" type="file" accept="image/*" hidden>
       <button class="text-button" id="demoModeButton" value="cancel" type="button">Preview without permissions</button>
     </form>
   </dialog>
@@ -231,8 +234,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="reward-burst" id="rewardBurst" aria-hidden="true"><span>+120 XP</span><i></i><i></i><i></i><i></i><i></i></div>
 
-  <script src="./database-config.js"></script>
-  <script src="./ai-provider.js"></script>
-  <script src="./app.js"></script>
+  <script src="./database-config.js?v=2.1.0"></script>
+  <script src="./ai-provider.js?v=2.1.0"></script>
+  <script src="./app.js?v=2.1.0"></script>
 </body>
 </html>

@@ -1,11 +1,11 @@
-const CACHE_NAME = "canopyquest-shell-v3";
+const CACHE_NAME = "canopyquest-shell-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./database-config.js",
-  "./ai-provider.js",
-  "./app.js",
+  "./styles.css?v=2.1.0",
+  "./database-config.js?v=2.1.0",
+  "./ai-provider.js?v=2.1.0",
+  "./app.js?v=2.1.0",
   "./manifest.webmanifest",
   "./og.png",
   "./icon-192.png",
@@ -33,6 +33,16 @@ self.addEventListener("fetch", event => {
       status: 503,
       headers: { "Content-Type": "application/json" }
     })));
+    return;
+  }
+  if (event.request.mode === "navigate") {
+    event.respondWith(fetch(event.request).then(response => {
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put("./index.html", copy));
+      }
+      return response;
+    }).catch(() => caches.match("./index.html")));
     return;
   }
   event.respondWith(
