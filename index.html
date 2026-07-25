@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173f2a">
+  <title>CanopyQuest · Orange, NJ</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header>
+    <p class="eyebrow">City of Orange Township · Shared Tree Inventory</p>
+    <h1>CanopyQuest</h1>
+    <p>Explore the living inventory and contribute field findings to the same record used by OrangeTrees.</p>
+  </header>
+
+  <main>
+    <section class="stats" aria-label="Inventory totals">
+      <article><strong id="treeCount">—</strong><span>active trees</span></article>
+      <article><strong id="findingCount">—</strong><span>community findings</span></article>
+      <article><strong id="verifiedCount">—</strong><span>verified trees</span></article>
+    </section>
+
+    <section class="panel">
+      <div>
+        <p class="eyebrow">Field contribution</p>
+        <h2>Log a finding</h2>
+      </div>
+      <form id="findingForm">
+        <label>Tree
+          <select id="treeId" name="treeId"><option value="">Unlinked location</option></select>
+        </label>
+        <label>Finding
+          <select name="category" required>
+            <option value="verified">Tree verified</option>
+            <option value="condition">Condition update</option>
+            <option value="new-tree">Possible new tree</option>
+            <option value="maintenance">Maintenance needed</option>
+            <option value="canopy-change">Canopy change</option>
+          </select>
+        </label>
+        <label class="wide">Notes
+          <textarea name="notes" rows="4" maxlength="1000" placeholder="What did you observe?"></textarea>
+        </label>
+        <label>Latitude
+          <input name="latitude" type="number" step="any" placeholder="40.7673">
+        </label>
+        <label>Longitude
+          <input name="longitude" type="number" step="any" placeholder="-74.2391">
+        </label>
+        <button type="button" class="secondary" id="locate">Use my location</button>
+        <button type="submit">Publish finding</button>
+      </form>
+      <p id="message" role="status"></p>
+    </section>
+
+    <section class="panel">
+      <div>
+        <p class="eyebrow">Combined activity</p>
+        <h2>Recent findings</h2>
+      </div>
+      <div id="findings" class="findings"></div>
+    </section>
+  </main>
+
+  <script src="./database-config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
