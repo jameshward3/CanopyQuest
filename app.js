@@ -106,11 +106,14 @@
     elements.xpBar.style.width = `${progress.percent}%`;
     elements.streakValue.textContent = profile.currentStreak || 0;
   }
-  function wardFor(longitude) {
-    if (!Number.isFinite(longitude)) return "—";
-    if (longitude < -74.242) return "WEST";
-    if (longitude > -74.2275) return "EAST";
-    return "CENTRAL";
+  function wardFor(latitude, longitude) {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return "—";
+    const latitudeOffset = latitude - 40.76730;
+    const longitudeOffset = (longitude - (-74.23905)) * Math.cos(40.76730 * Math.PI / 180);
+    if (Math.abs(latitudeOffset) >= Math.abs(longitudeOffset)) {
+      return latitudeOffset >= 0 ? "NORTH" : "SOUTH";
+    }
+    return longitudeOffset >= 0 ? "EAST" : "WEST";
   }
   function updateLocationHud() {
     const location = state.location;
@@ -121,7 +124,7 @@
       return;
     }
     elements.accuracyText.textContent = `GPS ±${Math.round(location.accuracy || 0)} m`;
-    elements.wardText.textContent = `WARD ${wardFor(location.longitude)}`;
+    elements.wardText.textContent = `WARD ${wardFor(location.latitude, location.longitude)}`;
     elements.coordinatesText.textContent = `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
     const nearest = nearestPriority(location);
     elements.priorityText.textContent = `${nearest.area.label} · ${Math.round(nearest.distance)} m`;
@@ -523,7 +526,7 @@
       estimatedDbh: Number(elements.dbhInput.value),
       estimatedCondition: elements.conditionInput.value,
       notes: elements.notesInput.value.trim().slice(0, 500),
-      ward: wardFor(state.location.longitude),
+      ward: wardFor(state.location.latitude, state.location.longitude),
       nearestAddress: state.matchedTree?.tree?.street || "Orange, NJ",
       existingTreeMatchConfidence: state.matchedTree?.confidence || 0,
       verificationStatus: state.location.accuracy > 50 ? "review" : "unverified",
