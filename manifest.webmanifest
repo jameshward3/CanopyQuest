@@ -1,0 +1,26 @@
+{
+  "name": "CanopyQuest · Orange, NJ",
+  "short_name": "CanopyQuest",
+  "description": "Map trees, complete field quests, and grow Orange's shared tree inventory.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#061513",
+  "theme_color": "#071d1b",
+  "categories": ["education", "games", "utilities"],
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

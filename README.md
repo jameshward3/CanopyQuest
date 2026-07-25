@@ -1,8 +1,37 @@
 # CanopyQuest
 
-CanopyQuest is the public field-contribution portal for Orange Township's shared
-tree inventory. It reads trees from, and publishes findings to,
-[`OrangeTreeDatabase`](https://github.com/jameshward3/OrangeTreeDatabase).
+CanopyQuest is a camera-first, installable field game for mapping trees inside
+the City of Orange, New Jersey. It reads the existing municipal tree inventory
+and writes reviewable captures and findings to
+[OrangeTreeDatabase](https://github.com/jameshward3/OrangeTreeDatabase), the
+same production source used by OrangeTrees.
 
-Set `ORANGE_TREE_DATABASE_URL` in `database-config.js` to the deployed database
-API origin before publishing the site.
+## Data contract
+
+The browser uses the public production origin configured in
+`database-config.js`. No private token or database credential is shipped to the
+client.
+
+- `GET /v1/trees` — current shared inventory (backward compatible)
+- `GET /v1/findings` — current field findings (backward compatible)
+- `POST /v1/players` — create or update a durable player by generated ID
+- `GET /v1/players/:id/dashboard` — profile, quests, achievements, collections
+- `POST /v1/captures` — idempotent capture, finding, rewards, and review state
+- `GET /v1/leaderboards?period=weekly&metric=xp` — ranked durable results
+
+AI output is explicitly labeled as an estimate. Captures store provider/model
+version, confidence, corrections, dimension estimates, minimal image metadata,
+GPS accuracy, heading, match confidence, and verification state. Public images
+and historical movement trails are not stored.
+
+## Local validation
+
+```bash
+npm test
+npm run check
+npm start
+```
+
+The service worker keeps the app shell and unsynced IndexedDB capture drafts
+available offline. Idempotency keys make retries safe; the authoritative record
+exists only after OrangeTreeDatabase confirms persistence.

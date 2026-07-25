@@ -2,68 +2,236 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#173f2a">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071d1b">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Map trees, complete field quests, and grow Orange, New Jersey's shared tree inventory.">
+  <meta property="og:title" content="CanopyQuest">
+  <meta property="og:description" content="Map trees. Grow the canopy.">
+  <meta property="og:image" content="https://jameshward3.github.io/CanopyQuest/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://jameshward3.github.io/CanopyQuest/og.png">
   <title>CanopyQuest · Orange, NJ</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon-192.png">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="preconnect" href="https://orange-tree-database.vercel.app">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header>
-    <p class="eyebrow">City of Orange Township · Shared Tree Inventory</p>
-    <h1>CanopyQuest</h1>
-    <p>Explore the living inventory and contribute field findings to the same record used by OrangeTrees.</p>
-  </header>
+  <a class="skip-link" href="#captureButton">Skip to capture</a>
 
-  <main>
-    <section class="stats" aria-label="Inventory totals">
-      <article><strong id="treeCount">—</strong><span>active trees</span></article>
-      <article><strong id="findingCount">—</strong><span>community findings</span></article>
-      <article><strong id="verifiedCount">—</strong><span>verified trees</span></article>
+  <main class="app-shell" id="app">
+    <video id="camera" class="camera-feed" playsinline muted aria-label="Live rear camera view"></video>
+    <canvas id="captureCanvas" hidden></canvas>
+    <div class="camera-fallback" aria-hidden="true"></div>
+    <div class="camera-shade" aria-hidden="true"></div>
+
+    <header class="topbar" aria-label="Player status">
+      <button class="brand" id="aboutButton" type="button" aria-label="About CanopyQuest">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span>CANOPY<span>QUEST</span></span>
+      </button>
+      <div class="top-actions">
+        <button class="streak" id="streakButton" type="button" aria-label="Capture streak">
+          <span aria-hidden="true">▲</span><strong id="streakValue">0</strong><small>DAY</small>
+        </button>
+        <button class="sync-state" id="syncButton" type="button" aria-label="Sync status">
+          <span class="cloud" aria-hidden="true">↥</span><span id="syncLabel">SYNC</span><i></i>
+        </button>
+      </div>
+    </header>
+
+    <section class="map-panel" aria-label="Nearby tree map">
+      <canvas id="mapCanvas"></canvas>
+      <div class="map-vignette" aria-hidden="true"></div>
+      <div class="map-profile">
+        <button class="avatar" id="profileButton" type="button" aria-label="Edit player profile">
+          <span id="avatarInitials">CQ</span>
+        </button>
+        <div>
+          <p><strong id="playerName">EXPLORER</strong><span>LVL <b id="levelValue">01</b></span></p>
+          <p class="xp-line"><span aria-hidden="true">⌁</span><strong id="xpText">0 / 500 XP</strong></p>
+          <div class="xp-track"><span id="xpBar"></span></div>
+        </div>
+      </div>
+      <div class="place-label"><strong>ORANGE</strong><span>NJ · 07050</span></div>
+      <div class="map-legend" aria-label="Map legend">
+        <span><i class="verified"></i>Verified</span>
+        <span><i class="unverified"></i>Review</span>
+        <span><i class="opportunity"></i>Opportunity</span>
+      </div>
+      <div class="priority-pill" id="priorityPill"><span></span><strong id="priorityText">FINDING AREA…</strong></div>
     </section>
 
-    <section class="panel">
-      <div>
-        <p class="eyebrow">Field contribution</p>
-        <h2>Log a finding</h2>
+    <section class="scan-stage" aria-label="Tree scanner">
+      <div class="target-brackets" aria-hidden="true">
+        <i></i><i></i><i></i><i></i>
       </div>
-      <form id="findingForm">
-        <label>Tree
-          <select id="treeId" name="treeId"><option value="">Unlinked location</option></select>
-        </label>
-        <label>Finding
-          <select name="category" required>
-            <option value="verified">Tree verified</option>
-            <option value="condition">Condition update</option>
-            <option value="new-tree">Possible new tree</option>
-            <option value="maintenance">Maintenance needed</option>
-            <option value="canopy-change">Canopy change</option>
-          </select>
-        </label>
-        <label class="wide">Notes
-          <textarea name="notes" rows="4" maxlength="1000" placeholder="What did you observe?"></textarea>
-        </label>
-        <label>Latitude
-          <input name="latitude" type="number" step="any" placeholder="40.7673">
-        </label>
-        <label>Longitude
-          <input name="longitude" type="number" step="any" placeholder="-74.2391">
-        </label>
-        <button type="button" class="secondary" id="locate">Use my location</button>
-        <button type="submit">Publish finding</button>
-      </form>
-      <p id="message" role="status"></p>
+      <div class="scan-line" aria-hidden="true"></div>
+      <div class="measure-rail" aria-hidden="true">
+        <span style="--p: 8%">40 FT</span>
+        <span style="--p: 34%">30 FT</span>
+        <span style="--p: 60%">20 FT</span>
+        <span style="--p: 86%">10 FT</span>
+      </div>
+      <div class="scan-dots" aria-hidden="true"></div>
+
+      <article class="analysis-card" id="analysisCard" aria-live="polite">
+        <div class="analysis-kicker"><span aria-hidden="true">△</span> AI FIELD ID <i>ESTIMATE</i></div>
+        <h2><span id="speciesValue">READY TO SCAN</span><strong id="confidenceValue">—</strong></h2>
+        <dl>
+          <div><dt><span aria-hidden="true">↕</span> HEIGHT</dt><dd id="heightValue">—</dd></div>
+          <div><dt><span aria-hidden="true">⌁</span> CANOPY</dt><dd id="canopyValue">—</dd></div>
+          <div><dt><span aria-hidden="true">◎</span> DBH</dt><dd id="dbhValue">—</dd></div>
+          <div><dt><span aria-hidden="true">♡</span> HEALTH</dt><dd id="healthValue">—</dd></div>
+        </dl>
+        <p id="modelLabel">CanopyVision Lite · on-device preview</p>
+      </article>
+
+      <div class="field-strip" id="fieldStrip">
+        <span>⌖</span>
+        <strong id="accuracyText">GPS —</strong>
+        <i>•</i>
+        <strong id="wardText">WARD —</strong>
+        <i>•</i>
+        <strong id="coordinatesText">LOCATION NEEDED</strong>
+      </div>
     </section>
 
-    <section class="panel">
-      <div>
-        <p class="eyebrow">Combined activity</p>
-        <h2>Recent findings</h2>
+    <section class="capture-zone" aria-label="Capture controls">
+      <div class="capture-status" id="captureStatus">
+        <strong id="captureHeadline">TREE SCANNER READY</strong>
+        <span id="captureInstruction">Enable camera and location to begin</span>
+        <em id="rewardPreview">+120 XP · FIELD CAPTURE</em>
       </div>
-      <div id="findings" class="findings"></div>
+      <nav class="bottom-nav" aria-label="Game navigation">
+        <button class="nav-action" id="questsButton" type="button">
+          <span class="nav-icon quest-icon" aria-hidden="true">✓</span>
+          <strong>QUESTS</strong>
+          <small id="questBadge">2</small>
+        </button>
+        <button class="capture-button" id="captureButton" type="button" aria-label="Capture tree">
+          <span class="capture-rings" aria-hidden="true"></span>
+          <span class="aperture" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="capture-label">START</span>
+        </button>
+        <button class="nav-action" id="leadersButton" type="button">
+          <span class="nav-icon leaders-icon" aria-hidden="true">▥</span>
+          <strong>LEADERS</strong>
+        </button>
+      </nav>
     </section>
   </main>
 
+  <dialog id="permissionDialog" class="sheet permission-sheet">
+    <form method="dialog">
+      <button class="close-sheet" value="cancel" aria-label="Close">×</button>
+      <p class="sheet-eyebrow">FIELD MODE</p>
+      <h2>See a tree. Map its story.</h2>
+      <p>CanopyQuest uses your camera to estimate tree traits and your location to match the shared Orange inventory. We save only the submitted tree location—not your movement trail.</p>
+      <div class="permission-list">
+        <div><span>◉</span><p><strong>Camera</strong><small>Used only while you scan. Photos stay on your device in this preview.</small></p></div>
+        <div><span>⌖</span><p><strong>Precise location</strong><small>Required to verify the tree is inside Orange and prevent duplicates.</small></p></div>
+        <div><span>↗</span><p><strong>Direction</strong><small>Optional. Improves the heading cone and field record.</small></p></div>
+      </div>
+      <button class="primary-button" id="enableFieldMode" value="cancel" type="button">ENABLE FIELD MODE</button>
+      <button class="text-button" id="demoModeButton" value="cancel" type="button">Preview without permissions</button>
+    </form>
+  </dialog>
+
+  <dialog id="profileDialog" class="sheet">
+    <form id="profileForm">
+      <button class="close-sheet" type="button" data-close aria-label="Close">×</button>
+      <p class="sheet-eyebrow">PLAYER PROFILE</p>
+      <h2>Choose your trail name</h2>
+      <p>Your display name is public on leaderboards. A generated private ID—not this name—links your records across sessions.</p>
+      <label>Display name
+        <input id="displayNameInput" name="displayName" maxlength="32" autocomplete="nickname" placeholder="Orange Explorer" required>
+      </label>
+      <label class="check-row"><input id="communityNotice" type="checkbox" required><span>I understand confirmed submissions contribute to Orange’s shared community tree inventory.</span></label>
+      <button class="primary-button" type="submit">SAVE PROFILE</button>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog" class="sheet">
+    <form id="confirmForm">
+      <button class="close-sheet" type="button" data-close aria-label="Close">×</button>
+      <p class="sheet-eyebrow">REVIEW ESTIMATES</p>
+      <h2>Confirm your finding</h2>
+      <p>AI identification and measurements are estimates until reviewed. Correct anything that looks wrong.</p>
+      <div class="confirm-grid">
+        <label>Species
+          <select id="speciesInput" name="species">
+            <option>Red maple</option>
+            <option>London planetree</option>
+            <option>Northern red oak</option>
+            <option>Pin oak</option>
+            <option>Callery pear</option>
+            <option>Honey locust</option>
+            <option>Unknown</option>
+          </select>
+        </label>
+        <label>Condition
+          <select id="conditionInput" name="condition">
+            <option>Good</option>
+            <option>Fair</option>
+            <option>Poor</option>
+            <option>Needs review</option>
+          </select>
+        </label>
+        <label>Height estimate (ft)<input id="heightInput" type="number" min="1" max="250"></label>
+        <label>Canopy diameter (ft)<input id="canopyInput" type="number" min="1" max="250"></label>
+        <label>Trunk DBH estimate (in)<input id="dbhInput" type="number" min="1" max="120"></label>
+        <label>Notes<textarea id="notesInput" maxlength="500" rows="2" placeholder="Optional field note"></textarea></label>
+      </div>
+      <div class="match-notice" id="matchNotice">Checking nearby inventory…</div>
+      <div class="confirm-actions">
+        <button class="secondary-button" id="retryButton" type="button">RETRY</button>
+        <button class="primary-button" type="submit">CONFIRM + SYNC</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="questsDialog" class="sheet game-sheet">
+    <form method="dialog">
+      <button class="close-sheet" value="cancel" aria-label="Close">×</button>
+      <p class="sheet-eyebrow">FIELD MISSIONS</p>
+      <h2>Quests</h2>
+      <div id="questList" class="quest-list"></div>
+    </form>
+  </dialog>
+
+  <dialog id="leadersDialog" class="sheet game-sheet">
+    <form method="dialog">
+      <button class="close-sheet" value="cancel" aria-label="Close">×</button>
+      <p class="sheet-eyebrow">ORANGE EXPLORERS</p>
+      <h2>Leaderboard</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" class="active" data-period="weekly">WEEK</button>
+        <button type="button" data-period="daily">TODAY</button>
+        <button type="button" data-period="all-time">ALL TIME</button>
+      </div>
+      <ol id="leaderList" class="leader-list"></ol>
+    </form>
+  </dialog>
+
+  <dialog id="aboutDialog" class="sheet">
+    <form method="dialog">
+      <button class="close-sheet" value="cancel" aria-label="Close">×</button>
+      <p class="sheet-eyebrow">CANOPYQUEST</p>
+      <h2>Community science, one tree at a time.</h2>
+      <p>Field captures become reviewable findings in OrangeTreeDatabase—the same inventory used by the municipal OrangeTrees portal. Exact historical movement trails are never published.</p>
+      <div class="notice-card"><strong>AI transparency</strong><p>Species and dimensions are estimates. Confidence, model version, corrections, and verification state travel with every submission.</p></div>
+      <a class="primary-button link-button" href="https://github.com/jameshward3/CanopyQuest" target="_blank" rel="noreferrer">VIEW PROJECT</a>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="reward-burst" id="rewardBurst" aria-hidden="true"><span>+120 XP</span><i></i><i></i><i></i><i></i><i></i></div>
+
   <script src="./database-config.js"></script>
+  <script src="./ai-provider.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
