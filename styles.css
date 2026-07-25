@@ -326,6 +326,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .capture-status strong { color: var(--lime); font-size: 1.3rem; }
 .capture-status span { color: #eef3eb; font-size: .85rem; }
 .capture-status em { margin-top: 7px; padding: 4px 13px; border: 1px solid rgba(200, 242, 74, .5); border-radius: 8px; color: var(--lime); background: rgba(91, 124, 34, .24); font-size: .85rem; font-style: normal; font-weight: 700; }
+.share-button { min-height: 34px; margin-top: 7px; padding: 4px 13px; border: 1px solid rgba(255, 255, 255, .42); border-radius: 8px; background: rgba(2, 18, 13, .58); color: white; font: 700 .72rem "Barlow Condensed", sans-serif; letter-spacing: .08em; cursor: pointer; }
+.share-button[hidden] { display: none; }
 .bottom-nav { height: 142px; display: grid; grid-template-columns: 1fr 1.25fr 1fr; align-items: end; padding: 4px 18px 10px; }
 .nav-action { position: relative; min-width: 84px; min-height: 104px; padding: 0; border: 0; background: none; display: grid; justify-items: center; align-content: end; gap: 5px; cursor: pointer; }
 .nav-action strong { font: 700 .9rem "Barlow Condensed", sans-serif; letter-spacing: .09em; }

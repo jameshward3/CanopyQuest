@@ -42,7 +42,7 @@
     "speciesValue", "confidenceValue", "heightValue", "canopyValue", "dbhValue",
     "healthValue", "modelLabel", "analysisCard", "speciesInput", "conditionInput",
     "heightInput", "canopyInput", "dbhInput", "notesInput", "matchNotice", "questList",
-    "questBadge", "leaderList", "toast", "rewardBurst"
+    "questBadge", "leaderList", "toast", "rewardBurst", "shareButton"
   ].forEach(id => { elements[id] = document.getElementById(id); });
 
   function uuid() {
@@ -623,6 +623,27 @@
     elements.rewardBurst.classList.remove("show");
     void elements.rewardBurst.offsetWidth;
     elements.rewardBurst.classList.add("show");
+    elements.shareButton.hidden = false;
+  }
+  async function shareFieldCard() {
+    const species = state.analysis?.speciesPrediction || "a street tree";
+    const shareData = {
+      title: "CanopyQuest",
+      text: `I mapped ${species} with CanopyQuest. Help grow Orange’s shared canopy inventory.`,
+      url: "https://jameshward3.github.io/CanopyQuest/"
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+        toast("Field card link copied.");
+      } else {
+        toast("Share CanopyQuest at jameshward3.github.io/CanopyQuest/");
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") toast("Sharing is not available in this browser.");
+    }
   }
   async function confirmCapture(event) {
     event.preventDefault();
@@ -710,6 +731,7 @@
       await Promise.all([loadSharedData(), flushQueue()]);
       toast(state.queueCount ? `${state.queueCount} capture${state.queueCount === 1 ? "" : "s"} waiting for connection.` : "Shared inventory is up to date.");
     });
+    elements.shareButton.addEventListener("click", shareFieldCard);
     elements.profileForm.addEventListener("submit", saveProfile);
     elements.confirmForm.addEventListener("submit", confirmCapture);
     elements.retryButton.addEventListener("click", () => { elements.confirmDialog.close(); scanTree(); });
