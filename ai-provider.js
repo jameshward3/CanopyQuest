@@ -44,7 +44,7 @@
     const canopyDiameter = Math.round(Math.max(12, height * (0.58 + ((sample.hash >> 3) % 10) / 100)));
     const dbh = Math.round(Math.max(7, height * 0.34 + ((sample.hash >> 5) % 4)));
 
-    await new Promise(resolve => setTimeout(resolve, 1050));
+    await new Promise(resolve => setTimeout(resolve, 280));
     return {
       provider: "CanopyAIProvider",
       model: "CanopyVision Lite",

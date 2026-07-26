@@ -32,6 +32,8 @@ npm run check
 npm start
 ```
 
-The service worker keeps the app shell and unsynced IndexedDB capture drafts
-available offline. Idempotency keys make retries safe; the authoritative record
+The service worker keeps the app shell and public map data available offline.
+Unsynced capture metadata is verified in a bounded device queue; older
+IndexedDB drafts migrate without deletion until the new queue confirms a
+durable copy. Idempotency keys make retries safe, and the authoritative record
 exists only after OrangeTreeDatabase confirms persistence.

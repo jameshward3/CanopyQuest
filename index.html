@@ -16,7 +16,7 @@
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="preconnect" href="https://orange-tree-database.vercel.app">
-  <link rel="stylesheet" href="./styles.css?v=2.1.0">
+  <link rel="stylesheet" href="./styles.css?v=3.2.0">
 </head>
 <body>
   <a class="skip-link" href="#captureButton">Skip to capture</a>
@@ -44,8 +44,13 @@
     </header>
 
     <section class="map-panel" aria-label="Nearby tree map">
-      <canvas id="mapCanvas"></canvas>
+      <canvas id="mapCanvas" tabindex="0" role="region" aria-label="Interactive map of Orange showing nearby streets and trees" aria-describedby="mapInstructions"></canvas>
+      <p class="sr-only" id="mapInstructions">Drag to move the map, pinch or use plus and minus to zoom, use arrow keys to pan, and press R to recenter.</p>
       <div class="map-vignette" aria-hidden="true"></div>
+      <div class="map-controls" aria-label="Map view controls">
+        <button id="mapPerspectiveButton" type="button" aria-pressed="false" aria-label="North-up map active; switch to heading-up">↑ NORTH</button>
+        <button id="mapRecenterButton" type="button" hidden>⌖ RECENTER</button>
+      </div>
       <div class="map-profile">
         <button class="avatar" id="profileButton" type="button" aria-label="Edit player profile">
           <span id="avatarInitials">CQ</span>
@@ -62,7 +67,7 @@
         <span><i class="unverified"></i>Review</span>
         <span><i class="opportunity"></i>Opportunity</span>
       </div>
-      <div class="priority-pill" id="priorityPill"><span></span><strong id="priorityText">FINDING AREA…</strong></div>
+      <div class="priority-pill" id="priorityPill"><span></span><strong id="priorityText">CHOOSE PHOTO OR FIELD MODE</strong></div>
     </section>
 
     <section class="scan-stage" aria-label="Tree scanner">
@@ -137,9 +142,11 @@
         <div><span>⌖</span><p><strong>Precise location</strong><small>Required to verify the tree is inside Orange and prevent duplicates.</small></p></div>
         <div><span>↗</span><p><strong>Direction</strong><small>Optional. Improves the heading cone and field record.</small></p></div>
       </div>
-      <button class="primary-button" id="enableFieldMode" value="cancel" type="button">ENABLE FIELD MODE</button>
-      <button class="secondary-button photo-button" id="choosePhotoButton" type="button">TAKE OR CHOOSE A PHOTO</button>
-      <input id="photoInput" type="file" accept="image/*" hidden>
+      <button class="primary-button" id="takePhotoButton" type="button">TAKE A PHOTO</button>
+      <input id="cameraPhotoInput" type="file" accept="image/*" capture="environment" hidden>
+      <button class="secondary-button photo-button" id="choosePhotoButton" type="button">CHOOSE EXISTING PHOTO</button>
+      <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <button class="text-button field-mode-button" id="enableFieldMode" value="cancel" type="button">USE LIVE CAMERA + GPS</button>
       <button class="text-button" id="demoModeButton" value="cancel" type="button">Preview without permissions</button>
     </form>
   </dialog>
@@ -184,16 +191,36 @@
             <option>Needs review</option>
           </select>
         </label>
-        <label>Height estimate (ft)<input id="heightInput" type="number" min="1" max="250"></label>
-        <label>Canopy diameter (ft)<input id="canopyInput" type="number" min="1" max="250"></label>
-        <label>Trunk DBH estimate (in)<input id="dbhInput" type="number" min="1" max="120"></label>
+        <label>Height estimate (ft)<input id="heightInput" type="number" min="1" max="250" step="1" required></label>
+        <label>Canopy diameter (ft)<input id="canopyInput" type="number" min="1" max="250" step="1" required></label>
+        <label>Trunk DBH estimate (in)<input id="dbhInput" type="number" min="1" max="120" step="1" required></label>
         <label>Notes<textarea id="notesInput" maxlength="500" rows="2" placeholder="Optional field note"></textarea></label>
       </div>
       <div class="match-notice" id="matchNotice">Checking nearby inventory…</div>
+      <p class="inline-status" id="confirmStatus" role="status" aria-live="polite">Ready to save this finding.</p>
       <div class="confirm-actions">
         <button class="secondary-button" id="retryButton" type="button">RETRY</button>
-        <button class="primary-button" type="submit">CONFIRM + SYNC</button>
+        <button class="primary-button" type="submit">CONFIRM FINDING</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="completionDialog" class="sheet completion-sheet">
+    <form method="dialog">
+      <button class="close-sheet" value="cancel" aria-label="Close">×</button>
+      <div class="completion-check" aria-hidden="true">✓</div>
+      <p class="sheet-eyebrow">CAPTURE SAVED</p>
+      <h2 id="completionTitle">Tree logged!</h2>
+      <p id="completionMessage">Saved safely on this device.</p>
+      <div class="completion-rewards">
+        <strong id="completionXp">+120 XP</strong>
+        <span id="completionChain">FIELD CHAIN ×1</span>
+      </div>
+      <p class="inline-status" id="completionStatus" role="status" aria-live="polite">SYNCING TO SHARED MAP…</p>
+      <button class="secondary-button" id="completionLocationButton" type="button" hidden>ADD CURRENT LOCATION + SYNC</button>
+      <button class="primary-button next-tree-button" id="nextTreeButton" type="button">MAP THE NEXT TREE · +120 XP</button>
+      <button class="secondary-button" id="completionShareButton" type="button">SHARE FIELD CARD ↗</button>
+      <button class="text-button discard-button" id="discardCaptureButton" type="button" hidden>DISCARD THIS SAVED DRAFT</button>
     </form>
   </dialog>
 
@@ -234,8 +261,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="reward-burst" id="rewardBurst" aria-hidden="true"><span>+120 XP</span><i></i><i></i><i></i><i></i><i></i></div>
 
-  <script src="./database-config.js?v=2.1.0"></script>
-  <script src="./ai-provider.js?v=2.1.0"></script>
-  <script src="./app.js?v=2.1.0"></script>
+  <script src="./database-config.js?v=3.2.0"></script>
+  <script src="./ai-provider.js?v=3.2.0"></script>
+  <script src="./app.js?v=3.2.0"></script>
 </body>
 </html>

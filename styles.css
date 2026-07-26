@@ -18,6 +18,17 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--deep); }
 body { color: var(--ink); overflow-x: hidden; }
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -50,7 +61,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   z-index: -6;
   background:
     linear-gradient(180deg, rgba(0, 14, 13, .05), rgba(2, 15, 11, .62)),
-    url("./og.png") 70% center / cover no-repeat;
+    url("./scanner-bg.jpg") 70% center / cover no-repeat;
   filter: saturate(.78) brightness(.66);
   transform: scale(1.03);
 }
@@ -140,8 +151,31 @@ button, a { -webkit-tap-highlight-color: transparent; }
   background: rgba(4, 29, 27, .76);
   box-shadow: 0 10px 22px rgba(0, 0, 0, .2);
 }
-#mapCanvas { width: 100%; height: 100%; opacity: .9; }
+#mapCanvas { width: 100%; height: 100%; opacity: .94; touch-action: none; cursor: grab; outline: none; }
+#mapCanvas:active { cursor: grabbing; }
+#mapCanvas:focus-visible { box-shadow: inset 0 0 0 3px rgba(200, 242, 74, .72); }
 .map-vignette { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(3, 27, 30, .1), transparent 30%, rgba(0, 16, 12, .33)); }
+.map-controls {
+  position: absolute;
+  z-index: 3;
+  top: calc(142px + var(--safe-top));
+  right: 18px;
+  display: flex;
+  gap: 6px;
+}
+.map-controls button {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid rgba(215, 255, 109, .48);
+  border-radius: 7px;
+  background: rgba(3, 23, 20, .72);
+  color: #e9f3e4;
+  backdrop-filter: blur(5px);
+  font: 700 .58rem "Barlow Condensed", sans-serif;
+  letter-spacing: .07em;
+  cursor: pointer;
+}
+.map-controls button[aria-pressed="true"] { border-color: var(--lime); color: var(--lime); }
 .map-profile {
   position: absolute;
   top: calc(86px + var(--safe-top));
@@ -387,6 +421,7 @@ dialog::backdrop { background: rgba(0, 10, 9, .68); backdrop-filter: blur(4px); 
 .primary-button { width: 100%; border: 1px solid var(--lime); background: var(--lime); color: #102514; }
 .secondary-button { width: 100%; border: 1px solid var(--lime); color: var(--lime); background: transparent; }
 .photo-button { margin-top: 10px; }
+.field-mode-button { margin-top: 5px; color: var(--lime); }
 .text-button { width: 100%; border: 0; background: transparent; color: #d7e0d7; }
 .link-button { display: grid; place-items: center; text-decoration: none; }
 .sheet label { display: grid; gap: 7px; margin-top: 16px; color: #e8eee7; font-size: .82rem; font-weight: 700; }
@@ -407,7 +442,55 @@ dialog::backdrop { background: rgba(0, 10, 9, .68); backdrop-filter: blur(4px); 
 .confirm-grid label:last-child { grid-column: 1 / -1; }
 .match-notice, .notice-card { margin: 17px 0; padding: 12px; border-left: 3px solid var(--lime); background: rgba(203, 244, 82, .08); color: #dbe5d9; font-size: .8rem; line-height: 1.45; }
 .notice-card p { margin-bottom: 0; }
+.inline-status {
+  min-height: 40px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 244, 82, .28);
+  border-radius: 9px;
+  background: rgba(0, 13, 10, .34);
+  color: #e4eee0 !important;
+  font: 700 .73rem/1.35 "Barlow Condensed", sans-serif;
+  letter-spacing: .045em;
+}
+.inline-status[data-tone="warning"] { border-color: var(--amber); color: #ffd2a8 !important; }
+.inline-status[data-tone="success"] { border-color: var(--lime); color: var(--lime) !important; }
 .confirm-actions { display: grid; grid-template-columns: .7fr 1.3fr; gap: 10px; }
+.completion-sheet { text-align: center; }
+.completion-sheet > form { display: grid; justify-items: stretch; }
+.completion-sheet .sheet-eyebrow { text-align: center; }
+.completion-sheet h2 { max-width: none; text-align: center; }
+.completion-sheet > form > p:not(.sheet-eyebrow) { text-align: center; }
+.completion-check {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 12px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--lime);
+  border-radius: 50%;
+  background: rgba(200, 242, 74, .12);
+  color: var(--lime);
+  box-shadow: 0 0 28px rgba(200, 242, 74, .32);
+  font: 800 2rem Inter, sans-serif;
+}
+.completion-rewards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.completion-rewards > * {
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(211, 249, 99, .35);
+  border-radius: 10px;
+  background: rgba(200, 242, 74, .07);
+  color: var(--lime);
+  font: 800 .9rem "Barlow Condensed", sans-serif;
+  letter-spacing: .06em;
+}
+.completion-sheet .inline-status { text-align: center; }
+.completion-sheet #completionLocationButton { margin: 0 0 9px; }
+.next-tree-button { margin-top: 4px; }
+.completion-sheet .secondary-button { margin-top: 9px; }
+.completion-sheet .discard-button { min-height: 40px; margin-top: 6px; color: #ffd2a8; font-size: .72rem; }
 .quest-list { display: grid; gap: 10px; margin-top: 20px; }
 .quest-card { padding: 14px; border: 1px solid rgba(220, 255, 151, .18); border-radius: 13px; background: rgba(255,255,255,.035); }
 .quest-card header { display: flex; justify-content: space-between; gap: 14px; }

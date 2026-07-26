@@ -1,13 +1,13 @@
 {
   "name": "canopyquest",
-  "version": "2.0.0",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
   "description": "Camera-first community tree-mapping PWA for Orange, New Jersey",
   "scripts": {
     "start": "python3 -m http.server 4173",
     "test": "node --test",
-    "check": "node --check app.js && node --check ai-provider.js && node --check sw.js"
+    "check": "node --check database-config.js && node --check app.js && node --check ai-provider.js && node --check sw.js"
   },
   "engines": {
     "node": ">=20"
