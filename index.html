@@ -16,7 +16,7 @@
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="preconnect" href="https://orange-tree-database.vercel.app">
-  <link rel="stylesheet" href="./styles.css?v=3.2.1">
+  <link rel="stylesheet" href="./styles.css?v=3.2.2">
 </head>
 <body>
   <a class="skip-link" href="#captureButton">Skip to capture</a>
@@ -196,10 +196,17 @@
         <label>Notes<textarea id="notesInput" maxlength="500" rows="2" placeholder="Optional field note"></textarea></label>
       </div>
       <div class="match-notice" id="matchNotice">Checking nearby inventory…</div>
+      <div class="leaf-proof">
+        <div>
+          <strong>LEAF PHOTO REQUIRED</strong>
+          <span id="leafPhotoStatus">Take a close-up of one leaf before confirming the species.</span>
+        </div>
+        <button class="secondary-button" id="addLeafPhotoButton" type="button">ADD LEAF PHOTO</button>
+      </div>
       <p class="inline-status" id="confirmStatus" role="status" aria-live="polite">Ready to save this finding.</p>
       <div class="confirm-actions">
         <button class="secondary-button" id="retryButton" type="button">RETRY</button>
-        <button class="primary-button" type="submit">CONFIRM FINDING</button>
+        <button class="primary-button" id="confirmSubmitButton" type="submit" disabled>CONFIRM FINDING</button>
       </div>
     </form>
   </dialog>
@@ -260,8 +267,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="reward-burst" id="rewardBurst" aria-hidden="true"><span>+120 XP</span><i></i><i></i><i></i><i></i><i></i></div>
 
-  <script src="./database-config.js?v=3.2.1"></script>
-  <script src="./ai-provider.js?v=3.2.1"></script>
-  <script src="./app.js?v=3.2.1"></script>
+  <script src="./database-config.js?v=3.2.2"></script>
+  <script src="./ai-provider.js?v=3.2.2"></script>
+  <script src="./app.js?v=3.2.2"></script>
 </body>
 </html>

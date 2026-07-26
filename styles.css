@@ -441,6 +441,11 @@ dialog::backdrop { background: rgba(0, 10, 9, .68); backdrop-filter: blur(4px); 
 .confirm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .confirm-grid label:last-child { grid-column: 1 / -1; }
 .match-notice, .notice-card { margin: 17px 0; padding: 12px; border-left: 3px solid var(--lime); background: rgba(203, 244, 82, .08); color: #dbe5d9; font-size: .8rem; line-height: 1.45; }
+.leaf-proof { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; margin: 12px 0; padding: 12px; border: 1px solid rgba(255, 177, 94, .48); border-radius: 10px; background: rgba(255, 151, 65, .08); }
+.leaf-proof div { display: grid; gap: 3px; }
+.leaf-proof strong { color: var(--amber); font: 800 .78rem "Barlow Condensed", sans-serif; letter-spacing: .06em; }
+.leaf-proof span { color: #dbe5d9; font-size: .72rem; line-height: 1.35; }
+.leaf-proof button { min-height: 42px; padding: 8px 12px; white-space: nowrap; }
 .notice-card p { margin-bottom: 0; }
 .inline-status {
   min-height: 40px;

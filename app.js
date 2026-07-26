@@ -39,6 +39,7 @@
     stream: null, location: null, heading: null, trees: [], streets: [], boundary: FALLBACK_BOUNDARY,
     profile: null, dashboard: null, analysis: null, matchedTree: null, demo: false,
     scanning: false, syncing: false, queueCount: 0, lastFrameHash: null,
+    leafPhotoHash: null, awaitingLeafPhoto: false, treeFrameMeta: null,
     uploadedImage: null, uploadedObjectUrl: null, uploadedFileMeta: null,
     photoJob: 0, confirming: false, completionCaptureId: null, pendingCaptureId: null,
     sessionCaptures: 0, memoryQueue: [], discardedCaptureIds: new Set(), mapDrawPending: false, profileSyncPromise: null,
@@ -55,6 +56,7 @@
     "confirmDialog", "completionDialog", "questsDialog", "leadersDialog", "aboutDialog", "enableFieldMode",
     "demoModeButton", "captureButton", "profileButton", "aboutButton", "questsButton", "takePhotoButton",
     "leadersButton", "syncButton", "profileForm", "confirmForm", "retryButton",
+    "addLeafPhotoButton", "leafPhotoStatus", "confirmSubmitButton",
     "displayNameInput", "communityNotice", "playerName", "avatarInitials", "levelValue",
     "xpText", "xpBar", "streakValue", "syncLabel", "priorityText", "accuracyText",
     "wardText", "coordinatesText", "captureHeadline", "captureInstruction", "rewardPreview",
@@ -695,7 +697,7 @@
       video.addEventListener("error", failed);
     });
   }
-  async function enableCamera() {
+  async function enableCamera({ preservePhoto = false } = {}) {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera is not supported by this browser.");
     stopCamera();
     const cameraJob = state.cameraJob;
@@ -723,11 +725,13 @@
       stream.getTracks?.().forEach(item => item.stop());
       throw new Error("The camera did not start.");
     }
-    if (state.uploadedObjectUrl) URL.revokeObjectURL(state.uploadedObjectUrl);
-    if (state.location?.source === "photo-exif") state.location = null;
-    state.uploadedImage = null;
-    state.uploadedObjectUrl = null;
-    state.uploadedFileMeta = null;
+    if (!preservePhoto) {
+      if (state.uploadedObjectUrl) URL.revokeObjectURL(state.uploadedObjectUrl);
+      if (state.location?.source === "photo-exif") state.location = null;
+      state.uploadedImage = null;
+      state.uploadedObjectUrl = null;
+      state.uploadedFileMeta = null;
+    }
     elements.photoPreview.hidden = true;
     elements.photoPreview.removeAttribute("src");
     updateLocationHud();
@@ -1069,19 +1073,20 @@
     const track = state.stream?.getVideoTracks?.()[0];
     return Boolean(track && track.readyState === "live" && elements.camera.readyState >= 2 && elements.camera.videoWidth);
   }
-  function captureFrame() {
+  function captureFrame(source = "auto") {
     const canvas = elements.captureCanvas;
     const video = elements.camera;
-    const sourceWidth = state.uploadedImage?.naturalWidth || video.videoWidth || 640;
-    const sourceHeight = state.uploadedImage?.naturalHeight || video.videoHeight || 960;
+    const useUploadedImage = source !== "live" && state.uploadedImage;
+    const sourceWidth = useUploadedImage?.naturalWidth || video.videoWidth || 640;
+    const sourceHeight = useUploadedImage?.naturalHeight || video.videoHeight || 960;
     const scale = Math.min(1, 1024 / Math.max(sourceWidth, sourceHeight));
     const width = Math.round(sourceWidth * scale);
     const height = Math.round(sourceHeight * scale);
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (state.uploadedImage) {
-      drawImageCover(context, state.uploadedImage, width, height);
+    if (useUploadedImage) {
+      drawImageCover(context, useUploadedImage, width, height);
     } else if (hasLiveCamera()) {
       drawImageCover(context, video, width, height);
     } else if (state.demo) {
@@ -1125,8 +1130,65 @@
     elements.healthValue.textContent = analysis.estimatedCondition.toUpperCase();
     elements.modelLabel.textContent = `${analysis.model} ${analysis.version} · on-device estimate`;
   }
+  async function beginLeafPhoto() {
+    if (!state.analysis || state.scanning) return;
+    elements.addLeafPhotoButton.disabled = true;
+    elements.addLeafPhotoButton.textContent = "OPENING CAMERA…";
+    try {
+      if (!hasLiveCamera() && !state.demo) await enableCamera({ preservePhoto: true });
+      state.awaitingLeafPhoto = true;
+      if (elements.confirmDialog.open) elements.confirmDialog.close();
+      elements.captureHeadline.textContent = "LEAF CLOSE-UP REQUIRED";
+      elements.captureInstruction.textContent = "Fill the frame with one leaf, then tap capture";
+      elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE LEAF";
+      toast("Hold one leaf close to the camera and tap Capture Leaf.");
+    } catch (error) {
+      elements.leafPhotoStatus.textContent = "The camera could not open. Try adding the leaf photo again.";
+      elements.confirmStatus.dataset.tone = "warning";
+      elements.confirmStatus.textContent = "LEAF PHOTO STILL REQUIRED";
+      if (!elements.confirmDialog.open) elements.confirmDialog.showModal();
+      toast(error.message || "The camera could not open.");
+    } finally {
+      elements.addLeafPhotoButton.disabled = false;
+      if (!state.leafPhotoHash) elements.addLeafPhotoButton.textContent = "ADD LEAF PHOTO";
+    }
+  }
+  async function captureLeafPhoto() {
+    if (!state.awaitingLeafPhoto || state.scanning) return;
+    state.scanning = true;
+    elements.app.classList.add("scanning");
+    elements.captureButton.disabled = true;
+    elements.captureHeadline.textContent = "CHECKING LEAF PHOTO";
+    elements.captureInstruction.textContent = "Attaching the second photo to this finding…";
+    try {
+      const leafFrame = captureFrame("live");
+      state.leafPhotoHash = await hashImageData(leafFrame.imageData);
+      state.awaitingLeafPhoto = false;
+      elements.leafPhotoStatus.textContent = "Leaf close-up attached. Species can now be confirmed.";
+      elements.addLeafPhotoButton.textContent = "RETAKE LEAF PHOTO";
+      elements.confirmSubmitButton.disabled = false;
+      elements.confirmStatus.dataset.tone = "success";
+      elements.confirmStatus.textContent = "TREE PHOTO + LEAF PHOTO READY · CONFIRM THE FINDING";
+      elements.captureHeadline.textContent = "LEAF PHOTO ATTACHED";
+      elements.captureInstruction.textContent = "Review and confirm the two-photo finding";
+      elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
+      if (!elements.confirmDialog.open) elements.confirmDialog.showModal();
+    } catch (error) {
+      elements.captureHeadline.textContent = "LEAF PHOTO NOT CAPTURED";
+      elements.captureInstruction.textContent = "Hold steady and tap capture to retry";
+      toast(error.message || "The leaf photo could not be captured.");
+    } finally {
+      state.scanning = false;
+      elements.app.classList.remove("scanning");
+      elements.captureButton.disabled = false;
+    }
+  }
   async function scanTree() {
     if (state.scanning) return;
+    if (state.awaitingLeafPhoto) {
+      await captureLeafPhoto();
+      return;
+    }
     if (!hasLiveCamera() && !state.demo && !state.uploadedImage) {
       elements.permissionDialog.showModal();
       return;
@@ -1156,6 +1218,8 @@
       ]);
       state.analysis = analysis;
       state.lastFrameHash = frameHash;
+      state.treeFrameMeta = { width: frame.width, height: frame.height };
+      state.leafPhotoHash = null;
       state.matchedTree = matchNearbyTree(state.location);
       renderAnalysis(analysis);
       elements.captureHeadline.textContent = "TREE IN RANGE";
@@ -1166,6 +1230,9 @@
       elements.canopyInput.value = analysis.estimatedCanopyDiameter;
       elements.dbhInput.value = analysis.estimatedDbh;
       elements.notesInput.value = "";
+      elements.leafPhotoStatus.textContent = "Take a close-up of one leaf before confirming the species.";
+      elements.addLeafPhotoButton.textContent = "ADD LEAF PHOTO";
+      elements.confirmSubmitButton.disabled = true;
       elements.matchNotice.textContent = state.matchedTree
         ? `Possible match: ${state.matchedTree.tree.id} · ${Math.round(state.matchedTree.distance)} m away · ${Math.round(state.matchedTree.confidence * 100)}% match confidence.`
         : state.location
@@ -1198,11 +1265,13 @@
       capturedAt: location?.capturedAt || new Date(state.uploadedFileMeta?.lastModified || Date.now()).toISOString(),
       imageReference: null, imageHash: state.lastFrameHash,
       imageMetadata: {
-        width: elements.captureCanvas.width,
-        height: elements.captureCanvas.height,
+        width: state.treeFrameMeta?.width || elements.captureCanvas.width,
+        height: state.treeFrameMeta?.height || elements.captureCanvas.height,
         exifRetained: false,
         gpsReadFromExif: Boolean(state.uploadedFileMeta?.gpsReadFromExif),
-        locationSource: location?.source || "pending"
+        locationSource: location?.source || "pending",
+        leafPhotoRequired: true,
+        leafPhotoHash: state.leafPhotoHash
       },
       aiModel: analysis.model, aiModelVersion: analysis.version, aiProvider: analysis.provider,
       speciesPrediction: analysis.speciesPrediction, speciesConfidence: analysis.speciesConfidence,
@@ -1222,7 +1291,7 @@
       metadata: {
         providerOnDevice: Boolean(analysis.onDevice),
         boundarySource: "U.S. Census TIGERweb 2025",
-        clientVersion: "3.2.1",
+        clientVersion: "3.2.2",
         offlineDraft: !navigator.onLine,
         queuedAt: new Date().toISOString(),
         locationConsent: state.uploadedFileMeta?.locationConsent || "photo-only"
@@ -1624,6 +1693,9 @@
     state.analysis = null;
     state.matchedTree = null;
     state.lastFrameHash = null;
+    state.leafPhotoHash = null;
+    state.awaitingLeafPhoto = false;
+    state.treeFrameMeta = null;
     state.pendingCaptureId = null;
     state.completionCaptureId = null;
     if (state.location?.source === "photo-exif" || state.location?.source === "demo") state.location = null;
@@ -1724,6 +1796,12 @@
     if (!state.analysis) {
       elements.confirmStatus.dataset.tone = "warning";
       elements.confirmStatus.textContent = "NO ANALYSIS IS READY · RETRY THE SCAN";
+      return;
+    }
+    if (!state.leafPhotoHash) {
+      elements.confirmStatus.dataset.tone = "warning";
+      elements.confirmStatus.textContent = "SECOND PHOTO REQUIRED · ADD A CLOSE-UP OF A LEAF";
+      elements.confirmSubmitButton.disabled = true;
       return;
     }
     if (state.demo) {
@@ -1956,6 +2034,7 @@
     elements.displayNameInput.addEventListener("input", () => elements.displayNameInput.setCustomValidity(""));
     elements.profileForm.addEventListener("submit", saveProfile);
     elements.confirmForm.addEventListener("submit", confirmCapture);
+    elements.addLeafPhotoButton.addEventListener("click", beginLeafPhoto);
     elements.retryButton.addEventListener("click", () => { elements.confirmDialog.close(); scanTree(); });
     document.querySelectorAll("[data-close]").forEach(button => {
       button.addEventListener("click", () => button.closest("dialog").close());
