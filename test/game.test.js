@@ -53,6 +53,22 @@ function loadUtilities(
 
 const utilities = loadUtilities();
 
+function loadAiProvider() {
+  const context = {
+    Blob,
+    FormData,
+    URL,
+    fetch: async () => { throw new Error("offline test"); },
+    setTimeout,
+    window: { ORANGE_TREE_DATABASE_URL: "https://example.test" }
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(new URL("../ai-provider.js", import.meta.url), "utf8"), context);
+  return context.window.CanopyAI;
+}
+
+const aiProvider = loadAiProvider();
+
 function jpegWithGps() {
   const tiffLength = 128;
   const payloadLength = 6 + tiffLength;
@@ -172,6 +188,34 @@ test("reads latitude and longitude from JPEG EXIF metadata", () => {
   assert.ok(gps);
   assert.ok(Math.abs(gps.latitude - 40.7675) < 0.000001);
   assert.ok(Math.abs(gps.longitude - (-74.2391666667)) < 0.000001);
+});
+
+test("canopy photos never fabricate a species", async () => {
+  const analysis = await aiProvider.analyze({
+    imageData: { data: new Uint8ClampedArray([20, 180, 30, 255]) }
+  });
+  assert.equal(analysis.speciesPrediction, "Unknown");
+  assert.equal(analysis.speciesConfidence, 0);
+});
+
+test("leaf index confirms only confident matches", () => {
+  const confident = aiProvider.normalizeLeafResult({
+    provider: "Test index",
+    results: [{
+      score: 0.91,
+      species: {
+        scientificNameWithoutAuthor: "Acer rubrum",
+        commonNames: ["Red maple"]
+      }
+    }]
+  });
+  assert.equal(confident.confirmed, true);
+  assert.equal(confident.speciesPrediction, "Red maple");
+  const uncertain = aiProvider.normalizeLeafResult({
+    results: [{ score: 0.55, species: { commonNames: ["Wrong tree"] } }]
+  });
+  assert.equal(uncertain.confirmed, false);
+  assert.equal(uncertain.speciesPrediction, "Unknown");
 });
 
 test("ignores images without EXIF GPS metadata", () => {
@@ -364,7 +408,7 @@ test("derives stable compass headings for flat and upright devices", () => {
 
 test("service worker caches a fast shell and public map data", () => {
   const serviceWorker = fs.readFileSync(new URL("../sw.js", import.meta.url), "utf8");
-  assert.match(serviceWorker, /canopyquest-shell-v11/);
+  assert.match(serviceWorker, /canopyquest-shell-v12/);
   assert.match(serviceWorker, /canopyquest-data-v3/);
   assert.match(serviceWorker, /staleWhileRevalidate/);
   assert.match(serviceWorker, /tigerweb\.geo\.census\.gov/);
@@ -384,6 +428,7 @@ test("capture interface keeps capture in-app and supports photo metadata", () =>
   assert.match(html, /id="confirmSubmitButton"[^>]*disabled/);
   assert.match(script, /leafPhotoRequired:\s*true/);
   assert.match(script, /if \(!state\.leafPhotoHash\)/);
+  assert.doesNotMatch(fs.readFileSync(new URL("../ai-provider.js", import.meta.url), "utf8"), /const species\s*=\s*\[/);
   assert.match(html, /id="confirmStatus"/);
   assert.match(html, /id="completionDialog"/);
   assert.match(html, /id="completionLocationButton"/);

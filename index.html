@@ -16,7 +16,7 @@
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="preconnect" href="https://orange-tree-database.vercel.app">
-  <link rel="stylesheet" href="./styles.css?v=3.2.2">
+  <link rel="stylesheet" href="./styles.css?v=3.3.0">
 </head>
 <body>
   <a class="skip-link" href="#captureButton">Skip to capture</a>
@@ -84,7 +84,7 @@
       <div class="scan-dots" aria-hidden="true"></div>
 
       <article class="analysis-card" id="analysisCard" aria-live="polite">
-        <div class="analysis-kicker"><span aria-hidden="true">△</span> AI FIELD ID <i>ESTIMATE</i></div>
+        <div class="analysis-kicker"><span aria-hidden="true">△</span> TREE MEASUREMENTS <i>ESTIMATE</i></div>
         <h2><span id="speciesValue">READY TO SCAN</span><strong id="confidenceValue">—</strong></h2>
         <dl>
           <div><dt><span aria-hidden="true">↕</span> HEIGHT</dt><dd id="heightValue">—</dd></div>
@@ -138,7 +138,7 @@
       <h2>See a tree. Map its story.</h2>
       <p>CanopyQuest keeps the camera inside the app while you scan. If a selected photo contains location metadata, that point can be used to match the shared Orange inventory.</p>
       <div class="permission-list">
-        <div><span>◉</span><p><strong>In-app camera</strong><small>Used only while you scan. The app will not send you to the phone’s Camera app.</small></p></div>
+        <div><span>◉</span><p><strong>In-app camera</strong><small>The tree photo stays on your device. The leaf close-up is sent through our private proxy to the Pl@ntNet recognition API.</small></p></div>
         <div><span>⌖</span><p><strong>Photo location</strong><small>Read from a selected photo when the camera saved coordinates in its metadata.</small></p></div>
         <div><span>↗</span><p><strong>Direction</strong><small>Optional. Improves the heading cone and field record.</small></p></div>
       </div>
@@ -169,16 +169,10 @@
       <button class="close-sheet" type="button" data-close aria-label="Close">×</button>
       <p class="sheet-eyebrow">REVIEW ESTIMATES</p>
       <h2>Confirm your finding</h2>
-      <p>AI identification and measurements are estimates until reviewed. Correct anything that looks wrong.</p>
+      <p>The canopy photo estimates dimensions only. Species remains Unknown unless the required leaf photo receives a confident match from the species index.</p>
       <div class="confirm-grid">
         <label>Species
-          <select id="speciesInput" name="species">
-            <option>Red maple</option>
-            <option>London planetree</option>
-            <option>Northern red oak</option>
-            <option>Pin oak</option>
-            <option>Callery pear</option>
-            <option>Honey locust</option>
+          <select id="speciesInput" name="species" disabled aria-describedby="leafPhotoStatus">
             <option>Unknown</option>
           </select>
         </label>
@@ -199,7 +193,7 @@
       <div class="leaf-proof">
         <div>
           <strong>LEAF PHOTO REQUIRED</strong>
-          <span id="leafPhotoStatus">Take a close-up of one leaf before confirming the species.</span>
+          <span id="leafPhotoStatus">Take a close-up of one leaf. Species stays Unknown until the leaf index returns a confident match.</span>
         </div>
         <button class="secondary-button" id="addLeafPhotoButton" type="button">ADD LEAF PHOTO</button>
       </div>
@@ -259,7 +253,7 @@
       <p class="sheet-eyebrow">CANOPYQUEST</p>
       <h2>Community science, one tree at a time.</h2>
       <p>Field captures become reviewable findings in OrangeTreeDatabase—the same inventory used by the municipal OrangeTrees portal. Exact historical movement trails are never published.</p>
-      <div class="notice-card"><strong>AI transparency</strong><p>Species and dimensions are estimates. Confidence, model version, corrections, and verification state travel with every submission.</p></div>
+      <div class="notice-card"><strong>AI transparency</strong><p>Canopy photos estimate dimensions only. Leaf identification is powered by the regularly updated Pl@ntNet recognition API; uncertain matches remain Unknown.</p></div>
       <a class="primary-button link-button" href="https://github.com/jameshward3/CanopyQuest" target="_blank" rel="noreferrer">VIEW PROJECT</a>
     </form>
   </dialog>
@@ -267,8 +261,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="reward-burst" id="rewardBurst" aria-hidden="true"><span>+120 XP</span><i></i><i></i><i></i><i></i><i></i></div>
 
-  <script src="./database-config.js?v=3.2.2"></script>
-  <script src="./ai-provider.js?v=3.2.2"></script>
-  <script src="./app.js?v=3.2.2"></script>
+  <script src="./database-config.js?v=3.3.0"></script>
+  <script src="./ai-provider.js?v=3.3.0"></script>
+  <script src="./app.js?v=3.3.0"></script>
 </body>
 </html>

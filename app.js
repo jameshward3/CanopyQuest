@@ -39,7 +39,7 @@
     stream: null, location: null, heading: null, trees: [], streets: [], boundary: FALLBACK_BOUNDARY,
     profile: null, dashboard: null, analysis: null, matchedTree: null, demo: false,
     scanning: false, syncing: false, queueCount: 0, lastFrameHash: null,
-    leafPhotoHash: null, awaitingLeafPhoto: false, treeFrameMeta: null,
+    leafPhotoHash: null, leafIdentification: null, awaitingLeafPhoto: false, treeFrameMeta: null,
     uploadedImage: null, uploadedObjectUrl: null, uploadedFileMeta: null,
     photoJob: 0, confirming: false, completionCaptureId: null, pendingCaptureId: null,
     sessionCaptures: 0, memoryQueue: [], discardedCaptureIds: new Set(), mapDrawPending: false, profileSyncPromise: null,
@@ -1121,19 +1121,45 @@
     if (!digest) return `fallback-${Date.now()}`;
     return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
   }
+  function canvasToJpegBlob(canvas) {
+    return withTimeout(
+      new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("The leaf photo could not be encoded.")), "image/jpeg", 0.88);
+      }),
+      3000,
+      "The leaf photo took too long to encode."
+    );
+  }
+  function setSpeciesResult(identification) {
+    const confirmed = Boolean(identification?.confirmed && identification.speciesPrediction !== "Unknown");
+    const speciesName = confirmed ? identification.speciesPrediction : "Unknown";
+    elements.speciesInput.replaceChildren(new Option(speciesName, speciesName));
+    elements.speciesInput.value = speciesName;
+    elements.speciesValue.textContent = speciesName.toUpperCase();
+    elements.confidenceValue.textContent = confirmed
+      ? `${Math.round(identification.speciesConfidence * 100)}%`
+      : "—";
+    elements.modelLabel.textContent = confirmed
+      ? `${identification.model} · leaf-index match`
+      : "Species unconfirmed · leaf match required";
+  }
   function renderAnalysis(analysis) {
-    elements.speciesValue.textContent = analysis.speciesPrediction.toUpperCase();
-    elements.confidenceValue.textContent = `${Math.round(analysis.speciesConfidence * 100)}%`;
+    elements.speciesValue.textContent = "UNKNOWN";
+    elements.confidenceValue.textContent = "—";
     elements.heightValue.textContent = `${analysis.estimatedHeight} FT`;
     elements.canopyValue.textContent = `${analysis.estimatedCanopyDiameter} FT`;
     elements.dbhValue.textContent = `~${analysis.estimatedDbh} IN`;
     elements.healthValue.textContent = analysis.estimatedCondition.toUpperCase();
-    elements.modelLabel.textContent = `${analysis.model} ${analysis.version} · on-device estimate`;
+    elements.modelLabel.textContent = `${analysis.model} ${analysis.version} · measurements only`;
   }
   async function beginLeafPhoto() {
     if (!state.analysis || state.scanning) return;
     elements.addLeafPhotoButton.disabled = true;
     elements.addLeafPhotoButton.textContent = "OPENING CAMERA…";
+    state.leafPhotoHash = null;
+    state.leafIdentification = null;
+    elements.confirmSubmitButton.disabled = true;
+    setSpeciesResult(null);
     try {
       if (!hasLiveCamera() && !state.demo) await enableCamera({ preservePhoto: true });
       state.awaitingLeafPhoto = true;
@@ -1162,13 +1188,42 @@
     elements.captureInstruction.textContent = "Attaching the second photo to this finding…";
     try {
       const leafFrame = captureFrame("live");
-      state.leafPhotoHash = await hashImageData(leafFrame.imageData);
+      const leafBlob = await canvasToJpegBlob(leafFrame.canvas);
+      const [leafHash, identification] = await Promise.all([
+        hashImageData(leafFrame.imageData),
+        withTimeout(
+          window.CanopyAI.identifyLeaf({
+            imageBlob: leafBlob,
+            metadata: {
+              latitude: state.location?.latitude,
+              longitude: state.location?.longitude,
+              capturedAt: new Date().toISOString()
+            }
+          }),
+          15000,
+          "Leaf identification timed out."
+        ).catch(() => ({
+          speciesPrediction: "Unknown",
+          speciesConfidence: 0,
+          confirmed: false,
+          reason: "classifier-unavailable",
+          provider: "CanopySpeciesIndex",
+          model: "External leaf index"
+        }))
+      ]);
+      state.leafPhotoHash = leafHash;
+      state.leafIdentification = identification;
       state.awaitingLeafPhoto = false;
-      elements.leafPhotoStatus.textContent = "Leaf close-up attached. Species can now be confirmed.";
+      setSpeciesResult(identification);
+      elements.leafPhotoStatus.textContent = identification.confirmed
+        ? `${identification.speciesPrediction} matched at ${Math.round(identification.speciesConfidence * 100)}% confidence.`
+        : "Leaf analyzed, but the index did not return a confident species match. This tree will remain Unknown.";
       elements.addLeafPhotoButton.textContent = "RETAKE LEAF PHOTO";
       elements.confirmSubmitButton.disabled = false;
-      elements.confirmStatus.dataset.tone = "success";
-      elements.confirmStatus.textContent = "TREE PHOTO + LEAF PHOTO READY · CONFIRM THE FINDING";
+      elements.confirmStatus.dataset.tone = identification.confirmed ? "success" : "warning";
+      elements.confirmStatus.textContent = identification.confirmed
+        ? "LEAF INDEX MATCH READY · CONFIRM THE FINDING"
+        : "LEAF ANALYZED · SPECIES REMAINS UNKNOWN";
       elements.captureHeadline.textContent = "LEAF PHOTO ATTACHED";
       elements.captureInstruction.textContent = "Review and confirm the two-photo finding";
       elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
@@ -1196,7 +1251,7 @@
     state.scanning = true;
     elements.app.classList.add("scanning");
     elements.captureHeadline.textContent = "ANALYZING CANOPY";
-    elements.captureInstruction.textContent = "Estimating species and dimensions…";
+    elements.captureInstruction.textContent = "Estimating tree dimensions…";
     elements.captureButton.disabled = true;
     try {
       if (hasLiveCamera() && !state.uploadedImage) state.location = null;
@@ -1220,17 +1275,18 @@
       state.lastFrameHash = frameHash;
       state.treeFrameMeta = { width: frame.width, height: frame.height };
       state.leafPhotoHash = null;
+      state.leafIdentification = null;
       state.matchedTree = matchNearbyTree(state.location);
       renderAnalysis(analysis);
       elements.captureHeadline.textContent = "TREE IN RANGE";
       elements.captureInstruction.textContent = "Review the estimates before syncing";
-      elements.speciesInput.value = analysis.speciesPrediction;
+      setSpeciesResult(null);
       elements.conditionInput.value = analysis.estimatedCondition;
       elements.heightInput.value = analysis.estimatedHeight;
       elements.canopyInput.value = analysis.estimatedCanopyDiameter;
       elements.dbhInput.value = analysis.estimatedDbh;
       elements.notesInput.value = "";
-      elements.leafPhotoStatus.textContent = "Take a close-up of one leaf before confirming the species.";
+      elements.leafPhotoStatus.textContent = "Take a close-up of one leaf. Species stays Unknown until the leaf index returns a confident match.";
       elements.addLeafPhotoButton.textContent = "ADD LEAF PHOTO";
       elements.confirmSubmitButton.disabled = true;
       elements.matchNotice.textContent = state.matchedTree
@@ -1254,7 +1310,9 @@
   }
   function buildCapture() {
     const analysis = state.analysis;
-    const confirmedSpecies = elements.speciesInput.value;
+    const confirmedSpecies = state.leafIdentification?.confirmed
+      ? state.leafIdentification.speciesPrediction
+      : "Unknown";
     const location = state.location;
     const currentMatch = matchNearbyTree(location);
     return {
@@ -1271,12 +1329,23 @@
         gpsReadFromExif: Boolean(state.uploadedFileMeta?.gpsReadFromExif),
         locationSource: location?.source || "pending",
         leafPhotoRequired: true,
-        leafPhotoHash: state.leafPhotoHash
+        leafPhotoHash: state.leafPhotoHash,
+        leafIndexSource: state.leafIdentification?.indexSource || null,
+        leafIdentificationReason: state.leafIdentification?.reason || "not-analyzed",
+        leafScientificName: state.leafIdentification?.scientificName || null,
+        leafIdentificationProvider: state.leafIdentification?.provider || null,
+        leafIdentificationModel: state.leafIdentification?.model || null,
+        leafIdentificationVersion: state.leafIdentification?.version || null,
+        measurementModel: analysis.model,
+        measurementModelVersion: analysis.version
       },
-      aiModel: analysis.model, aiModelVersion: analysis.version, aiProvider: analysis.provider,
-      speciesPrediction: analysis.speciesPrediction, speciesConfidence: analysis.speciesConfidence,
+      aiModel: state.leafIdentification?.model || analysis.model,
+      aiModelVersion: state.leafIdentification?.version || analysis.version,
+      aiProvider: state.leafIdentification?.provider || analysis.provider,
+      speciesPrediction: state.leafIdentification?.speciesPrediction || "Unknown",
+      speciesConfidence: Number(state.leafIdentification?.speciesConfidence || 0),
       confirmedSpecies,
-      userCorrected: confirmedSpecies !== analysis.speciesPrediction || elements.conditionInput.value !== analysis.estimatedCondition,
+      userCorrected: elements.conditionInput.value !== analysis.estimatedCondition,
       estimatedHeight: Number(elements.heightInput.value),
       estimatedCanopyDiameter: Number(elements.canopyInput.value),
       estimatedCanopyArea: Math.round(Math.PI * Math.pow(Number(elements.canopyInput.value) / 2, 2)),
@@ -1286,12 +1355,16 @@
       ward: location ? wardFor(location.latitude, location.longitude) : "PENDING",
       nearestAddress: currentMatch?.tree?.street || "Orange, NJ",
       existingTreeMatchConfidence: currentMatch?.confidence || 0,
-      verificationStatus: !location ? "pending-location" : location.accuracy > 50 ? "review" : "unverified",
+      verificationStatus: !location
+        ? "pending-location"
+        : !state.leafIdentification?.confirmed || location.accuracy > 50
+          ? "review"
+          : "unverified",
       source: "canopyquest",
       metadata: {
         providerOnDevice: Boolean(analysis.onDevice),
         boundarySource: "U.S. Census TIGERweb 2025",
-        clientVersion: "3.2.2",
+        clientVersion: "3.3.0",
         offlineDraft: !navigator.onLine,
         queuedAt: new Date().toISOString(),
         locationConsent: state.uploadedFileMeta?.locationConsent || "photo-only"
@@ -1694,6 +1767,7 @@
     state.matchedTree = null;
     state.lastFrameHash = null;
     state.leafPhotoHash = null;
+    state.leafIdentification = null;
     state.awaitingLeafPhoto = false;
     state.treeFrameMeta = null;
     state.pendingCaptureId = null;
@@ -1707,7 +1781,7 @@
     elements.canopyValue.textContent = "—";
     elements.dbhValue.textContent = "—";
     elements.healthValue.textContent = "—";
-    elements.modelLabel.textContent = "CanopyVision Lite · on-device preview";
+    elements.modelLabel.textContent = "Measurements ready · leaf match required for species";
     elements.captureHeadline.textContent = hasLiveCamera() ? "CAMERA READY" : "NEXT TREE READY";
     elements.captureInstruction.textContent = hasLiveCamera() ? "Aim, hold steady, and tap capture" : "Take the next tree photo to continue your field chain";
     elements.captureButton.querySelector(".capture-label").textContent = hasLiveCamera() ? "CAPTURE" : "START";
@@ -1770,7 +1844,9 @@
     }
   }
   async function shareFieldCard() {
-    const species = state.analysis?.speciesPrediction || "a street tree";
+    const species = state.leafIdentification?.confirmed
+      ? state.leafIdentification.speciesPrediction
+      : "an unknown street tree";
     const shareData = {
       title: "CanopyQuest",
       text: `I mapped ${species} with CanopyQuest. Help grow Orange’s shared canopy inventory.`,

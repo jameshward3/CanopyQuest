@@ -17,12 +17,17 @@ client.
 - `POST /v1/players` — create or update a durable player by generated ID
 - `GET /v1/players/:id/dashboard` — profile, quests, achievements, collections
 - `POST /v1/captures` — idempotent capture, finding, rewards, and review state
+- `POST /v1/identify/leaf` — private proxy to the configured botanical image index
 - `GET /v1/leaderboards?period=weekly&metric=xp` — ranked durable results
 
-AI output is explicitly labeled as an estimate. Captures store provider/model
-version, confidence, corrections, dimension estimates, minimal image metadata,
-GPS accuracy, heading, match confidence, and verification state. Public images
-and historical movement trails are not stored.
+The long-range tree photo estimates dimensions only and can never assign a
+species. A second leaf photo is required and is sent to the database's private
+identification proxy. Only a leaf-index result at or above the client confidence
+threshold confirms a species; unavailable, rejected, or low-confidence results
+are stored as `Unknown`. Captures store provider/model version, confidence,
+dimension estimates, leaf evidence metadata, GPS accuracy, heading, match
+confidence, and verification state. Public images and historical movement trails
+are not stored.
 
 ## Local validation
 
