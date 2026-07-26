@@ -12,6 +12,11 @@ The browser uses the public production origin configured in
 `database-config.js`. No private token or database credential is shipped to the
 client.
 
+Field mode requests the browser's native high-accuracy location API from the
+same user gesture that opens the in-app camera. The request has a strict timeout
+and a lower-power retry, so a slow GPS fix cannot trap the camera flow. Selected
+photos can still supply an EXIF coordinate when native GPS is unavailable.
+
 - `GET /v1/trees` — current shared inventory (backward compatible)
 - `GET /v1/findings` — current field findings (backward compatible)
 - `POST /v1/players` — create or update a durable player by generated ID

@@ -1,12 +1,12 @@
-const SHELL_CACHE = "canopyquest-shell-v12";
+const SHELL_CACHE = "canopyquest-shell-v13";
 const DATA_CACHE = "canopyquest-data-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=3.3.0",
-  "./database-config.js?v=3.3.0",
-  "./ai-provider.js?v=3.3.0",
-  "./app.js?v=3.3.0",
+  "./styles.css?v=3.4.0",
+  "./database-config.js?v=3.4.0",
+  "./ai-provider.js?v=3.4.0",
+  "./app.js?v=3.4.0",
   "./scanner-bg.jpg",
   "./manifest.webmanifest"
 ];

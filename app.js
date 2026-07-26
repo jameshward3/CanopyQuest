@@ -13,6 +13,8 @@
   const LEGACY_QUEUE_DB = "canopyquest";
   const LEGACY_QUEUE_STORE = "captures";
   const LEGACY_MIGRATION_TIMEOUT_MS = 2000;
+  const GPS_FRESHNESS_MS = 20000;
+  const GPS_CAPTURE_WAIT_MS = 6500;
   const FALLBACK_BOUNDARY = [
     [-74.25514, 40.75838], [-74.25004, 40.75617], [-74.24374, 40.75370],
     [-74.23815, 40.75224], [-74.23313, 40.75672], [-74.22648, 40.76265],
@@ -44,6 +46,7 @@
     photoJob: 0, confirming: false, completionCaptureId: null, pendingCaptureId: null,
     sessionCaptures: 0, memoryQueue: [], discardedCaptureIds: new Set(), mapDrawPending: false, profileSyncPromise: null,
     resettingCapture: false, lastOrientationDraw: 0, cameraJob: 0, lastCaptureMode: "live",
+    locationRequest: null, locationError: null,
     mapView: {
       perspective: false, follow: true, zoom: 1, panX: 0, panY: 0, tilt: 0.82,
       frozenHeading: null, frozenLocation: null
@@ -301,16 +304,16 @@
   function updateLocationHud() {
     const location = state.location;
     if (!location) {
-      elements.accuracyText.textContent = "PHOTO LOCATION —";
+      elements.accuracyText.textContent = "GPS —";
       elements.wardText.textContent = "WARD —";
-      elements.coordinatesText.textContent = "NO PHOTO LOCATION";
-      elements.priorityText.textContent = state.uploadedImage ? "PHOTO READY · NO LOCATION DATA" : "OPEN CAMERA OR CHOOSE PHOTO";
+      elements.coordinatesText.textContent = "WAITING FOR LOCATION";
+      elements.priorityText.textContent = state.uploadedImage ? "PHOTO READY · LOCATION PENDING" : "OPEN CAMERA + ENABLE GPS";
       drawMap();
       return;
     }
     elements.accuracyText.textContent = location.source === "photo-exif"
       ? "PHOTO LOCATION"
-      : `LOCATION ±${Math.round(location.accuracy || 0)} m`;
+      : `NATIVE GPS ±${Math.round(location.accuracy || 0)} m`;
     elements.wardText.textContent = `WARD ${wardFor(location.latitude, location.longitude)}`;
     elements.coordinatesText.textContent = `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
     const nearest = nearestPriority(location);
@@ -535,7 +538,7 @@
     context.shadowBlur = 6;
     context.stroke();
     context.shadowBlur = 0;
-    state.trees.slice(0, 600).forEach(tree => {
+    state.trees.slice(0, 4000).forEach(tree => {
       const coordinates = treeLocation(tree);
       if (!coordinates) return;
       const [x, y] = mapPoint(coordinates.longitude, coordinates.latitude, width, height);
@@ -753,6 +756,77 @@
     state.stream = null;
     if (elements.camera) elements.camera.srcObject = null;
   }
+  function normalizeNativePosition(position) {
+    const latitude = Number(position?.coords?.latitude);
+    const longitude = Number(position?.coords?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      throw new Error("The device returned an unreadable GPS position.");
+    }
+    return {
+      latitude,
+      longitude,
+      accuracy: Math.max(1, Number(position.coords.accuracy || 100)),
+      capturedAt: new Date(Number(position.timestamp) || Date.now()).toISOString(),
+      source: "native-gps"
+    };
+  }
+  function nativePosition(options) {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation?.getCurrentPosition) {
+        reject(new Error("Native GPS is not supported by this browser."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  }
+  function gpsErrorMessage(error) {
+    if (error?.code === 1) return "Location permission is off. Allow Precise Location for CanopyQuest in browser settings.";
+    if (error?.code === 2) return "The device could not determine its location. Step outdoors and retry.";
+    if (error?.code === 3 || error?.name === "TimeoutError") return "GPS is taking too long. Keep the app open and retry.";
+    return error?.message || "Native GPS is unavailable.";
+  }
+  function locationIsFresh(location = state.location) {
+    if (!location || location.source !== "native-gps") return false;
+    const capturedAt = Date.parse(location.capturedAt);
+    return Number.isFinite(capturedAt) && Date.now() - capturedAt <= GPS_FRESHNESS_MS;
+  }
+  async function requestNativeLocation({ force = false, announce = false } = {}) {
+    if (state.location?.source === "photo-exif" && !force) return state.location;
+    if (!force && locationIsFresh()) return state.location;
+    if (state.locationRequest) return state.locationRequest;
+    if (announce) {
+      elements.accuracyText.textContent = "GPS LOCATING…";
+      elements.coordinatesText.textContent = "ALLOW PRECISE LOCATION";
+    }
+    const primary = nativePosition({
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 8000
+    }).catch(error => {
+      if (error?.code === 1) throw error;
+      return nativePosition({
+        enableHighAccuracy: false,
+        maximumAge: 30000,
+        timeout: 4500
+      });
+    });
+    state.locationRequest = withTimeout(primary, 13500, "GPS request timed out.")
+      .then(position => {
+        state.location = normalizeNativePosition(position);
+        state.locationError = null;
+        updateLocationHud();
+        return state.location;
+      })
+      .catch(error => {
+        state.locationError = gpsErrorMessage(error);
+        updateLocationHud();
+        throw new Error(state.locationError);
+      })
+      .finally(() => {
+        state.locationRequest = null;
+      });
+    return state.locationRequest;
+  }
   async function requestOrientation({ prompt = false } = {}) {
     try {
       if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
@@ -805,14 +879,25 @@
   }
   async function enableFieldMode() {
     elements.enableFieldMode.disabled = true;
-    elements.enableFieldMode.textContent = "OPENING CAMERA…";
+    elements.enableFieldMode.textContent = "OPENING CAMERA + GPS…";
     try {
-      await enableCamera();
+      const cameraReady = enableCamera();
+      const locationReady = requestNativeLocation({ force: true, announce: true })
+        .catch(error => {
+          toast(`${error.message} Camera capture is still available.`, 5600);
+          return null;
+        });
+      await cameraReady;
       if (elements.permissionDialog.open) elements.permissionDialog.close();
-      elements.captureHeadline.textContent = "CAMERA READY";
-      elements.captureInstruction.textContent = "Aim at a tree and tap capture";
+      elements.captureHeadline.textContent = "CAMERA READY · GPS LOCATING";
+      elements.captureInstruction.textContent = "Aim at a tree; the GPS fix will appear above";
       elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
       requestOrientation().catch(() => null);
+      locationReady.then(location => {
+        if (!location || !hasLiveCamera()) return;
+        elements.captureHeadline.textContent = "CAMERA + GPS READY";
+        elements.captureInstruction.textContent = "Aim at a tree and tap capture";
+      });
     } catch (error) {
       if (elements.permissionDialog.open) elements.permissionDialog.close();
       toast(`${error.message || "Camera unavailable"} Choose an existing photo instead.`, 5200);
@@ -1250,11 +1335,22 @@
     }
     state.scanning = true;
     elements.app.classList.add("scanning");
-    elements.captureHeadline.textContent = "ANALYZING CANOPY";
-    elements.captureInstruction.textContent = "Estimating tree dimensions…";
     elements.captureButton.disabled = true;
     try {
-      if (hasLiveCamera() && !state.uploadedImage) state.location = null;
+      if (hasLiveCamera() && !state.uploadedImage && !locationIsFresh()) {
+        elements.captureHeadline.textContent = "LOCKING GPS";
+        elements.captureInstruction.textContent = "Getting a current tree position…";
+        await withTimeout(
+          requestNativeLocation({ announce: true }),
+          GPS_CAPTURE_WAIT_MS,
+          "GPS capture wait timed out."
+        ).catch(error => {
+          state.locationError = gpsErrorMessage(error);
+          toast(`${state.locationError} The photo can still be reviewed locally.`, 5200);
+        });
+      }
+      elements.captureHeadline.textContent = "ANALYZING CANOPY";
+      elements.captureInstruction.textContent = "Estimating tree dimensions…";
       const frame = captureFrame();
       const captureId = uuid();
       state.lastCaptureMode = state.uploadedImage
@@ -1289,15 +1385,20 @@
       elements.leafPhotoStatus.textContent = "Take a close-up of one leaf. Species stays Unknown until the leaf index returns a confident match.";
       elements.addLeafPhotoButton.textContent = "ADD LEAF PHOTO";
       elements.confirmSubmitButton.disabled = true;
+      const matchedAwaitingConfirmation = state.matchedTree
+        && (
+          state.matchedTree.tree.verificationStatus === "awaiting-confirmation"
+          || String(state.matchedTree.tree.status || "").toLowerCase() === "needs review"
+        );
       elements.matchNotice.textContent = state.matchedTree
-        ? `Possible match: ${state.matchedTree.tree.id} · ${Math.round(state.matchedTree.distance)} m away · ${Math.round(state.matchedTree.confidence * 100)}% match confidence.`
+        ? `${matchedAwaitingConfirmation ? "Awaiting confirmation" : "Possible match"}: ${state.matchedTree.tree.id} · ${Math.round(state.matchedTree.distance)} m away · ${Math.round(state.matchedTree.confidence * 100)}% match confidence.`
         : state.location
-          ? "No existing inventory tree matched within the photo-location capture radius. This will be routed as a possible new tree."
-          : "Photo analyzed. No location was present in the camera data, so this finding will stay on this device.";
+          ? "No existing inventory tree matched within the native-GPS capture radius. This will be routed as a possible new tree."
+          : "Photo analyzed. Native GPS is not ready, so this finding will stay on this device until location is added.";
       elements.confirmStatus.dataset.tone = state.location ? "success" : "warning";
       elements.confirmStatus.textContent = state.location
         ? "LOCATION READY · CONFIRMATION SAVES INSTANTLY ON THIS DEVICE"
-        : "NO PHOTO LOCATION · THIS FINDING WILL STAY ON THIS DEVICE";
+        : "GPS PENDING · THIS FINDING WILL STAY ON THIS DEVICE";
       if (!elements.confirmDialog.open) elements.confirmDialog.showModal();
     } catch (error) {
       console.error(error);
@@ -1364,10 +1465,12 @@
       metadata: {
         providerOnDevice: Boolean(analysis.onDevice),
         boundarySource: "U.S. Census TIGERweb 2025",
-        clientVersion: "3.3.0",
+        clientVersion: "3.4.0",
         offlineDraft: !navigator.onLine,
         queuedAt: new Date().toISOString(),
-        locationConsent: state.uploadedFileMeta?.locationConsent || "photo-only"
+        locationConsent: location?.source === "native-gps"
+          ? "native-gps"
+          : state.uploadedFileMeta?.locationConsent || "photo-only"
       }
     };
   }
@@ -1627,10 +1730,10 @@
   async function finalizeCapture(capture) {
     if (!Number.isFinite(capture.latitude) || !Number.isFinite(capture.longitude)) {
       updateActiveCompletion(capture.id, () => {
-        elements.completionLocationButton.hidden = true;
+        elements.completionLocationButton.hidden = !navigator.geolocation?.getCurrentPosition;
         elements.discardCaptureButton.hidden = false;
       });
-      updateCompletionStatus(capture.id, "SAVED ON DEVICE · PHOTO CONTAINED NO LOCATION", "warning");
+      updateCompletionStatus(capture.id, "SAVED ON DEVICE · TAP ADD CURRENT LOCATION TO SYNC", "warning");
       return;
     }
     const outcome = await syncCapture(capture);
@@ -1841,6 +1944,54 @@
     if (state.completionCaptureId === captureId) {
       toast("Saved draft discarded from this device.");
       resetForNextTree({ openCamera: false });
+    }
+  }
+  async function addCurrentLocationAndSync() {
+    const captureId = state.completionCaptureId;
+    const captures = readQueueLocal();
+    const capture = captures.find(item => item.id === captureId);
+    if (!capture) {
+      updateCompletionStatus(captureId, "THIS FINDING IS NO LONGER WAITING TO SYNC", "success");
+      elements.completionLocationButton.hidden = true;
+      return;
+    }
+    elements.completionLocationButton.disabled = true;
+    elements.completionLocationButton.textContent = "GETTING GPS…";
+    updateCompletionStatus(captureId, "REQUESTING PRECISE DEVICE LOCATION…", "success");
+    try {
+      const location = await requestNativeLocation({ force: true, announce: true });
+      const currentMatch = matchNearbyTree(location);
+      const updated = {
+        ...capture,
+        treeId: currentMatch?.tree?.id || capture.treeId || null,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        gpsAccuracy: location.accuracy,
+        ward: wardFor(location.latitude, location.longitude),
+        nearestAddress: currentMatch?.tree?.street || capture.nearestAddress || "Orange, NJ",
+        existingTreeMatchConfidence: currentMatch?.confidence || capture.existingTreeMatchConfidence || 0,
+        verificationStatus: !capture.confirmedSpecies || capture.confirmedSpecies === "Unknown" || location.accuracy > 50
+          ? "review"
+          : "unverified",
+        imageMetadata: {
+          ...(capture.imageMetadata || {}),
+          locationSource: "native-gps"
+        },
+        metadata: {
+          ...(capture.metadata || {}),
+          locationConsent: "native-gps"
+        }
+      };
+      if (!writeQueueLocal(captures.map(item => item.id === captureId ? updated : item))) {
+        throw new Error("The GPS update could not be saved on this device.");
+      }
+      await updateQueueCount();
+      await finalizeCapture(updated);
+    } catch (error) {
+      updateCompletionStatus(captureId, gpsErrorMessage(error), "warning");
+    } finally {
+      elements.completionLocationButton.disabled = false;
+      elements.completionLocationButton.textContent = "ADD CURRENT LOCATION + SYNC";
     }
   }
   async function shareFieldCard() {
@@ -2095,6 +2246,7 @@
     elements.completionShareButton.addEventListener("click", shareFieldCard);
     elements.nextTreeButton.addEventListener("click", () => resetForNextTree({ openCamera: true }));
     elements.discardCaptureButton.addEventListener("click", discardCompletionCapture);
+    elements.completionLocationButton.addEventListener("click", addCurrentLocationAndSync);
     elements.completionDialog.addEventListener("close", () => {
       if (!state.resettingCapture && state.analysis) resetForNextTree({ openCamera: false });
     });
@@ -2182,7 +2334,7 @@
   window.CanopyQuest = Object.freeze({
     distanceMeters, pointInPolygon, sanitizeName, levelProgress, matchNearbyTree, parseExifGps,
     parseImageDimensions, normalizeStreetFeatures, baseMapPoint, compassHeading, waitForVideoFrame,
-    withTimeout, persistQueue, mergeLegacyCaptureQueues
+    withTimeout, persistQueue, mergeLegacyCaptureQueues, normalizeNativePosition, locationIsFresh
   });
   init();
 })();

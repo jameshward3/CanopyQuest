@@ -190,6 +190,21 @@ test("reads latitude and longitude from JPEG EXIF metadata", () => {
   assert.ok(Math.abs(gps.longitude - (-74.2391666667)) < 0.000001);
 });
 
+test("normalizes native browser GPS fixes with accuracy and timestamp", () => {
+  const location = utilities.normalizeNativePosition({
+    coords: { latitude: 40.76731, longitude: -74.23904, accuracy: 6.4 },
+    timestamp: Date.parse("2026-07-26T16:00:00.000Z")
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(location)), {
+    latitude: 40.76731,
+    longitude: -74.23904,
+    accuracy: 6.4,
+    capturedAt: "2026-07-26T16:00:00.000Z",
+    source: "native-gps"
+  });
+  assert.throws(() => utilities.normalizeNativePosition({ coords: {} }), /unreadable GPS/);
+});
+
 test("canopy photos never fabricate a species", async () => {
   const analysis = await aiProvider.analyze({
     imageData: { data: new Uint8ClampedArray([20, 180, 30, 255]) }
@@ -408,7 +423,7 @@ test("derives stable compass headings for flat and upright devices", () => {
 
 test("service worker caches a fast shell and public map data", () => {
   const serviceWorker = fs.readFileSync(new URL("../sw.js", import.meta.url), "utf8");
-  assert.match(serviceWorker, /canopyquest-shell-v12/);
+  assert.match(serviceWorker, /canopyquest-shell-v13/);
   assert.match(serviceWorker, /canopyquest-data-v3/);
   assert.match(serviceWorker, /staleWhileRevalidate/);
   assert.match(serviceWorker, /tigerweb\.geo\.census\.gov/);
@@ -418,12 +433,15 @@ test("service worker caches a fast shell and public map data", () => {
   assert.doesNotMatch(shell, /og\.png|icon-512/);
 });
 
-test("capture interface keeps capture in-app and supports photo metadata", () => {
+test("capture interface keeps capture in-app and uses bounded native GPS with photo fallback", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const script = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.doesNotMatch(html, /capture="environment"/);
-  assert.match(html, /OPEN IN-APP CAMERA/);
-  assert.doesNotMatch(script, /navigator\.geolocation|getCurrentPosition/);
+  assert.match(html, /OPEN CAMERA \+ GPS/);
+  assert.match(script, /navigator\.geolocation\.getCurrentPosition/);
+  assert.match(script, /enableHighAccuracy:\s*true/);
+  assert.match(script, /GPS_CAPTURE_WAIT_MS/);
+  assert.doesNotMatch(script, /hasLiveCamera\(\)[^\n]*state\.location\s*=\s*null/);
   assert.match(html, /id="addLeafPhotoButton"/);
   assert.match(html, /id="confirmSubmitButton"[^>]*disabled/);
   assert.match(script, /leafPhotoRequired:\s*true/);
