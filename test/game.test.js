@@ -416,6 +416,29 @@ test("projects the map with one uniform geographic scale", () => {
   assert.ok(Math.abs((east100m[0] - center[0]) - (center[1] - north100m[1])) < 0.001);
 });
 
+test("centers the neighborhood map on the current GPS location", () => {
+  const origin = { latitude: 40.7673, longitude: -74.2391 };
+  const center = utilities.locationCenteredMapPoint(
+    origin.longitude,
+    origin.latitude,
+    origin,
+    390,
+    300,
+    7
+  );
+  const east = utilities.locationCenteredMapPoint(
+    origin.longitude + 0.001,
+    origin.latitude,
+    origin,
+    390,
+    300,
+    7
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(center)), [195, 150]);
+  assert.ok(east[0] > center[0]);
+  assert.equal(east[1], center[1]);
+});
+
 test("derives stable compass headings for flat and upright devices", () => {
   assert.ok(Math.abs(utilities.compassHeading(350, 0, 0) - 10) < 0.001);
   assert.ok(Math.abs(utilities.compassHeading(90, 90, 0) - 270) < 0.001);
@@ -423,7 +446,7 @@ test("derives stable compass headings for flat and upright devices", () => {
 
 test("service worker caches a fast shell and public map data", () => {
   const serviceWorker = fs.readFileSync(new URL("../sw.js", import.meta.url), "utf8");
-  assert.match(serviceWorker, /canopyquest-shell-v13/);
+  assert.match(serviceWorker, /canopyquest-shell-v14/);
   assert.match(serviceWorker, /canopyquest-data-v3/);
   assert.match(serviceWorker, /staleWhileRevalidate/);
   assert.match(serviceWorker, /tigerweb\.geo\.census\.gov/);

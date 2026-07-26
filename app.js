@@ -15,6 +15,9 @@
   const LEGACY_MIGRATION_TIMEOUT_MS = 2000;
   const GPS_FRESHNESS_MS = 20000;
   const GPS_CAPTURE_WAIT_MS = 6500;
+  const LOCATION_FOCUS_ZOOM = 7;
+  const MAP_MIN_ZOOM = .8;
+  const MAP_MAX_ZOOM = 12;
   const FALLBACK_BOUNDARY = [
     [-74.25514, 40.75838], [-74.25004, 40.75617], [-74.24374, 40.75370],
     [-74.23815, 40.75224], [-74.23313, 40.75672], [-74.22648, 40.76265],
@@ -386,9 +389,28 @@
     const scale = mapScale(width, height);
     return [width / 2 + projected.east * scale, height / 2 - projected.north * scale];
   }
+  function locationCenteredMapPoint(longitude, latitude, origin, width, height, zoom = LOCATION_FOCUS_ZOOM) {
+    const projected = mapMeters(longitude, latitude, origin.longitude, origin.latitude);
+    const scale = mapScale(width, height) * zoom;
+    return [
+      width / 2 + projected.east * scale,
+      height / 2 - projected.north * scale
+    ];
+  }
   function mapPoint(longitude, latitude, width, height) {
     const view = state.mapView;
     const activeLocation = view.follow ? state.location : view.frozenLocation;
+    if (!view.perspective && activeLocation && view.zoom > 1) {
+      const [x, y] = locationCenteredMapPoint(
+        longitude,
+        latitude,
+        activeLocation,
+        width,
+        height,
+        view.zoom
+      );
+      return [x + view.panX, y + view.panY];
+    }
     if (!view.perspective || !activeLocation) {
       const [x, y] = baseMapPoint(longitude, latitude, width, height);
       return [x * view.zoom + view.panX + width * (1 - view.zoom) / 2, y * view.zoom + view.panY + height * (1 - view.zoom) / 2];
@@ -588,9 +610,12 @@
       context.lineWidth = 2;
       context.stroke();
     }
-    const viewDescription = state.mapView.perspective && (state.mapView.follow ? state.location : state.mapView.frozenLocation)
-      ? "heading-up perspective"
-      : "north-up";
+    const activeMapLocation = state.mapView.follow ? state.location : state.mapView.frozenLocation;
+    const viewDescription = state.mapView.perspective && activeMapLocation
+      ? "current-location heading-up perspective"
+      : activeMapLocation && state.mapView.zoom > 1
+        ? "current-location north-up"
+        : "citywide north-up";
     canvas.setAttribute?.("aria-label", `Map of Orange showing ${state.trees.length} trees and ${state.streets.length} street segments in ${viewDescription} view.`);
   }
   async function loadBoundary() {
@@ -814,6 +839,7 @@
       .then(position => {
         state.location = normalizeNativePosition(position);
         state.locationError = null;
+        if (state.mapView.follow) focusMapOnLocation();
         updateLocationHud();
         return state.location;
       })
@@ -1117,6 +1143,7 @@
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           source: "photo-exif"
         };
+        if (state.mapView.follow) focusMapOnLocation();
       }
       if (previousObjectUrl && previousObjectUrl !== preparedPhoto.objectUrl) URL.revokeObjectURL(previousObjectUrl);
       updateLocationHud();
@@ -1465,7 +1492,7 @@
       metadata: {
         providerOnDevice: Boolean(analysis.onDevice),
         boundarySource: "U.S. Census TIGERweb 2025",
-        clientVersion: "3.4.0",
+        clientVersion: "3.4.1",
         offlineDraft: !navigator.onLine,
         queuedAt: new Date().toISOString(),
         locationConsent: location?.source === "native-gps"
@@ -2132,7 +2159,20 @@
     );
     elements.mapRecenterButton.hidden = state.mapView.follow && state.mapView.panX === 0 && state.mapView.panY === 0;
   }
+  function focusMapOnLocation() {
+    if (!state.location) return false;
+    state.mapView.follow = true;
+    state.mapView.panX = 0;
+    state.mapView.panY = 0;
+    state.mapView.zoom = LOCATION_FOCUS_ZOOM;
+    state.mapView.frozenHeading = null;
+    state.mapView.frozenLocation = null;
+    renderMapControls();
+    scheduleMapDraw();
+    return true;
+  }
   function recenterMap() {
+    if (focusMapOnLocation()) return;
     state.mapView.follow = true;
     state.mapView.panX = 0;
     state.mapView.panY = 0;
@@ -2182,7 +2222,7 @@
       const [first, second] = [...state.mapGesture.pointers.values()];
       const distance = Math.hypot(first.x - second.x, first.y - second.y);
       if (state.mapGesture.lastDistance > 0) {
-        state.mapView.zoom = Math.max(.8, Math.min(3.2, state.mapView.zoom * distance / state.mapGesture.lastDistance));
+        state.mapView.zoom = Math.max(MAP_MIN_ZOOM, Math.min(MAP_MAX_ZOOM, state.mapView.zoom * distance / state.mapGesture.lastDistance));
       }
       state.mapGesture.lastDistance = distance;
     }
@@ -2202,7 +2242,7 @@
   function mapWheel(event) {
     event.preventDefault();
     const factor = event.deltaY > 0 ? .9 : 1.1;
-    state.mapView.zoom = Math.max(.8, Math.min(3.2, state.mapView.zoom * factor));
+    state.mapView.zoom = Math.max(MAP_MIN_ZOOM, Math.min(MAP_MAX_ZOOM, state.mapView.zoom * factor));
     detachMapFollow();
     renderMapControls();
     scheduleMapDraw();
@@ -2213,8 +2253,8 @@
     else if (event.key === "ArrowRight") state.mapView.panX -= step;
     else if (event.key === "ArrowUp") state.mapView.panY += step;
     else if (event.key === "ArrowDown") state.mapView.panY -= step;
-    else if (event.key === "+" || event.key === "=") state.mapView.zoom = Math.min(3.2, state.mapView.zoom * 1.12);
-    else if (event.key === "-" || event.key === "_") state.mapView.zoom = Math.max(.8, state.mapView.zoom / 1.12);
+    else if (event.key === "+" || event.key === "=") state.mapView.zoom = Math.min(MAP_MAX_ZOOM, state.mapView.zoom * 1.12);
+    else if (event.key === "-" || event.key === "_") state.mapView.zoom = Math.max(MAP_MIN_ZOOM, state.mapView.zoom / 1.12);
     else if (event.key.toLowerCase() === "r") {
       recenterMap();
       return;
@@ -2333,7 +2373,7 @@
 
   window.CanopyQuest = Object.freeze({
     distanceMeters, pointInPolygon, sanitizeName, levelProgress, matchNearbyTree, parseExifGps,
-    parseImageDimensions, normalizeStreetFeatures, baseMapPoint, compassHeading, waitForVideoFrame,
+    parseImageDimensions, normalizeStreetFeatures, baseMapPoint, locationCenteredMapPoint, compassHeading, waitForVideoFrame,
     withTimeout, persistQueue, mergeLegacyCaptureQueues, normalizeNativePosition, locationIsFresh
   });
   init();
