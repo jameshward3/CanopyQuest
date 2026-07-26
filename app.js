@@ -40,9 +40,9 @@
     profile: null, dashboard: null, analysis: null, matchedTree: null, demo: false,
     scanning: false, syncing: false, queueCount: 0, lastFrameHash: null,
     uploadedImage: null, uploadedObjectUrl: null, uploadedFileMeta: null,
-    photoJob: 0, confirming: false, locationPromise: null, completionCaptureId: null, pendingCaptureId: null,
+    photoJob: 0, confirming: false, completionCaptureId: null, pendingCaptureId: null,
     sessionCaptures: 0, memoryQueue: [], discardedCaptureIds: new Set(), mapDrawPending: false, profileSyncPromise: null,
-    resettingCapture: false, lastOrientationDraw: 0, cameraJob: 0, locationJob: 0, lastCaptureMode: "native",
+    resettingCapture: false, lastOrientationDraw: 0, cameraJob: 0, lastCaptureMode: "live",
     mapView: {
       perspective: false, follow: true, zoom: 1, panX: 0, panY: 0, tilt: 0.82,
       frozenHeading: null, frozenLocation: null
@@ -62,7 +62,7 @@
     "healthValue", "modelLabel", "analysisCard", "speciesInput", "conditionInput",
     "heightInput", "canopyInput", "dbhInput", "notesInput", "matchNotice", "questList",
     "questBadge", "leaderList", "toast", "rewardBurst", "shareButton", "photoPreview",
-    "photoInput", "cameraPhotoInput", "choosePhotoButton", "mapPerspectiveButton", "mapRecenterButton",
+    "photoInput", "choosePhotoButton", "mapPerspectiveButton", "mapRecenterButton",
     "confirmStatus", "completionTitle", "completionMessage", "completionXp", "completionChain",
     "completionStatus", "completionLocationButton", "discardCaptureButton",
     "nextTreeButton", "completionShareButton"
@@ -299,21 +299,21 @@
   function updateLocationHud() {
     const location = state.location;
     if (!location) {
-      elements.accuracyText.textContent = "GPS —";
+      elements.accuracyText.textContent = "PHOTO LOCATION —";
       elements.wardText.textContent = "WARD —";
-      elements.coordinatesText.textContent = "LOCATION NEEDED";
-      elements.priorityText.textContent = state.uploadedImage ? "PHOTO READY · GPS NEEDED" : "CHOOSE PHOTO OR FIELD MODE";
+      elements.coordinatesText.textContent = "NO PHOTO LOCATION";
+      elements.priorityText.textContent = state.uploadedImage ? "PHOTO READY · NO LOCATION DATA" : "OPEN CAMERA OR CHOOSE PHOTO";
       drawMap();
       return;
     }
     elements.accuracyText.textContent = location.source === "photo-exif"
-      ? "PHOTO GPS"
-      : `GPS ±${Math.round(location.accuracy || 0)} m`;
+      ? "PHOTO LOCATION"
+      : `LOCATION ±${Math.round(location.accuracy || 0)} m`;
     elements.wardText.textContent = `WARD ${wardFor(location.latitude, location.longitude)}`;
     elements.coordinatesText.textContent = `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
     const nearest = nearestPriority(location);
     elements.priorityText.textContent = location.source === "photo-exif"
-      ? `${nearest.area.label} · PHOTO GPS`
+      ? `${nearest.area.label} · PHOTO LOCATION`
       : `${nearest.area.label} · ${Math.round(nearest.distance)} m`;
     drawMap();
   }
@@ -749,59 +749,6 @@
     state.stream = null;
     if (elements.camera) elements.camera.srcObject = null;
   }
-  function requestLocation({ timeoutMs = 6500, maximumAge = 300000, force = false } = {}) {
-    const locationAge = state.location?.capturedAt
-      ? Date.now() - new Date(state.location.capturedAt).getTime()
-      : Number.POSITIVE_INFINITY;
-    if (state.location && !force && locationAge <= maximumAge) return Promise.resolve(state.location);
-    if (state.locationPromise && !force) return state.locationPromise;
-    const locationJob = ++state.locationJob;
-    const locationPromise = new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error("Location is not supported by this browser."));
-        return;
-      }
-      let settled = false;
-      const safetyTimer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        reject(new Error("Location timed out."));
-      }, timeoutMs + 750);
-      navigator.geolocation.getCurrentPosition(position => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(safetyTimer);
-        if (locationJob !== state.locationJob) {
-          reject(new Error("A newer location request replaced this one."));
-          return;
-        }
-        state.location = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          altitude: position.coords.altitude,
-          capturedAt: new Date(position.timestamp).toISOString(),
-          source: "device-gps"
-        };
-        updateLocationHud();
-        resolve(state.location);
-      }, error => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(safetyTimer);
-        if (locationJob !== state.locationJob) {
-          reject(new Error("A newer location request replaced this one."));
-          return;
-        }
-        reject(error);
-      }, { enableHighAccuracy: true, timeout: timeoutMs, maximumAge });
-    });
-    const trackedPromise = locationPromise.finally(() => {
-      if (state.locationPromise === trackedPromise) state.locationPromise = null;
-    });
-    state.locationPromise = trackedPromise;
-    return trackedPromise;
-  }
   async function requestOrientation({ prompt = false } = {}) {
     try {
       if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
@@ -859,16 +806,15 @@
       await enableCamera();
       if (elements.permissionDialog.open) elements.permissionDialog.close();
       elements.captureHeadline.textContent = "CAMERA READY";
-      elements.captureInstruction.textContent = "Tap the scanner now—GPS resolves in the background";
+      elements.captureInstruction.textContent = "Aim at a tree and tap capture";
       elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
-      requestLocation().catch(() => null);
       requestOrientation().catch(() => null);
     } catch (error) {
       if (elements.permissionDialog.open) elements.permissionDialog.close();
-      toast(`${error.message || "Camera unavailable"} Use Take a Photo instead.`, 5200);
+      toast(`${error.message || "Camera unavailable"} Choose an existing photo instead.`, 5200);
     } finally {
       elements.enableFieldMode.disabled = false;
-      elements.enableFieldMode.textContent = "USE LIVE CAMERA + GPS";
+      elements.enableFieldMode.textContent = "USE IN-APP CAMERA";
     }
   }
   function startDemo() {
@@ -1029,7 +975,7 @@
     }
   }
   async function choosePhoto(event) {
-    const fromCamera = event.target === elements.cameraPhotoInput;
+    const fromCamera = false;
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -1072,7 +1018,7 @@
         lastModified: file.lastModified || Date.now(),
         gpsReadFromExif: Boolean(gps),
         fromCamera,
-        locationConsent: gps ? "photo-exif" : fromCamera ? "current" : "photo-only"
+        locationConsent: gps ? "photo-exif" : "photo-only"
       };
       elements.photoPreview.hidden = false;
       if (gps) {
@@ -1082,23 +1028,17 @@
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           source: "photo-exif"
         };
-      } else if (fromCamera) {
-        requestLocation({ timeoutMs: 6000, maximumAge: 30000, force: true }).catch(() => null);
       }
       if (previousObjectUrl && previousObjectUrl !== preparedPhoto.objectUrl) URL.revokeObjectURL(previousObjectUrl);
       updateLocationHud();
-      elements.captureHeadline.textContent = gps ? "PHOTO READY · GPS FOUND" : "PHOTO READY";
+      elements.captureHeadline.textContent = gps ? "PHOTO READY · LOCATION FOUND" : "PHOTO READY";
       elements.captureInstruction.textContent = gps
         ? "Tap the scanner to identify this tree"
-        : fromCamera
-          ? "Tap to identify while GPS resolves in the background"
-          : "Tap to identify; add current location after review if the photo has no GPS";
+        : "Tap to identify; this photo has no embedded location";
       elements.captureButton.querySelector(".capture-label").textContent = "SCAN PHOTO";
       toast(gps
-        ? "Photo GPS found. Ready to scan."
-        : fromCamera
-          ? "Photo ready. GPS is resolving in the background."
-          : "Photo ready. No embedded GPS was found.");
+        ? "Photo location found. Ready to scan."
+        : "Photo ready. No embedded location was found.");
     } catch (error) {
       URL.revokeObjectURL(preparedObjectUrl);
       if (preparedObjectUrl !== objectUrl) URL.revokeObjectURL(objectUrl);
@@ -1197,10 +1137,7 @@
     elements.captureInstruction.textContent = "Estimating species and dimensions…";
     elements.captureButton.disabled = true;
     try {
-      if (hasLiveCamera() && !state.uploadedImage) {
-        state.location = null;
-        requestLocation({ timeoutMs: 6000, maximumAge: 0, force: true }).catch(() => null);
-      }
+      if (hasLiveCamera() && !state.uploadedImage) state.location = null;
       const frame = captureFrame();
       const captureId = uuid();
       state.lastCaptureMode = state.uploadedImage
@@ -1232,12 +1169,12 @@
       elements.matchNotice.textContent = state.matchedTree
         ? `Possible match: ${state.matchedTree.tree.id} · ${Math.round(state.matchedTree.distance)} m away · ${Math.round(state.matchedTree.confidence * 100)}% match confidence.`
         : state.location
-          ? "No existing inventory tree matched within the GPS-aware capture radius. This will be routed as a possible new tree."
-          : "Photo analyzed. Location will be requested only when you confirm, so the image capture is never blocked by GPS.";
+          ? "No existing inventory tree matched within the photo-location capture radius. This will be routed as a possible new tree."
+          : "Photo analyzed. No location was present in the camera data, so this finding will stay on this device.";
       elements.confirmStatus.dataset.tone = state.location ? "success" : "warning";
       elements.confirmStatus.textContent = state.location
         ? "LOCATION READY · CONFIRMATION SAVES INSTANTLY ON THIS DEVICE"
-        : "GPS IS STILL RESOLVING · YOU CAN CONFIRM NOW WITHOUT WAITING";
+        : "NO PHOTO LOCATION · THIS FINDING WILL STAY ON THIS DEVICE";
       if (!elements.confirmDialog.open) elements.confirmDialog.showModal();
     } catch (error) {
       console.error(error);
@@ -1285,26 +1222,12 @@
       metadata: {
         providerOnDevice: Boolean(analysis.onDevice),
         boundarySource: "U.S. Census TIGERweb 2025",
-        clientVersion: "3.2.0",
+        clientVersion: "3.2.1",
         offlineDraft: !navigator.onLine,
         queuedAt: new Date().toISOString(),
-        locationConsent: state.uploadedFileMeta?.locationConsent || "current"
+        locationConsent: state.uploadedFileMeta?.locationConsent || "photo-only"
       }
     };
-  }
-  function applyLocationToCapture(capture, location) {
-    capture.latitude = location.latitude;
-    capture.longitude = location.longitude;
-    capture.gpsAccuracy = Number(location.accuracy || 0);
-    capture.ward = wardFor(location.latitude, location.longitude);
-    capture.capturedAt = location.capturedAt || capture.capturedAt;
-    capture.imageMetadata.locationSource = location.source || "device-gps";
-    capture.verificationStatus = location.accuracy > 50 ? "review" : "unverified";
-    const matched = matchNearbyTree(location);
-    capture.treeId = matched?.tree?.id || null;
-    capture.nearestAddress = matched?.tree?.street || "Orange, NJ";
-    capture.existingTreeMatchConfidence = matched?.confidence || 0;
-    return capture;
   }
   function readQueueLocal() {
     try {
@@ -1561,31 +1484,12 @@
   }
   async function finalizeCapture(capture) {
     if (!Number.isFinite(capture.latitude) || !Number.isFinite(capture.longitude)) {
-      if (capture.metadata?.locationConsent !== "current") {
-        updateActiveCompletion(capture.id, () => {
-          elements.completionLocationButton.hidden = false;
-          elements.discardCaptureButton.hidden = false;
-        });
-        updateCompletionStatus(capture.id, "SAVED ON DEVICE · ADD CURRENT LOCATION TO JOIN THE SHARED MAP", "warning");
-        return;
-      }
-      try {
-        const location = await (state.locationPromise || requestLocation({
-          timeoutMs: 6000,
-          maximumAge: 30000,
-          force: false
-        }));
-        applyLocationToCapture(capture, location);
-        await queueCapture(capture);
-        updateCompletionStatus(capture.id, "LOCATION FOUND · SYNCING TO SHARED MAP…", "success");
-      } catch (_error) {
-        updateActiveCompletion(capture.id, () => {
-          elements.completionLocationButton.hidden = false;
-          elements.discardCaptureButton.hidden = false;
-        });
-        updateCompletionStatus(capture.id, "SAVED ON DEVICE · LOCATION NEEDED TO JOIN THE SHARED MAP", "warning");
-        return;
-      }
+      updateActiveCompletion(capture.id, () => {
+        elements.completionLocationButton.hidden = true;
+        elements.discardCaptureButton.hidden = false;
+      });
+      updateCompletionStatus(capture.id, "SAVED ON DEVICE · PHOTO CONTAINED NO LOCATION", "warning");
+      return;
     }
     const outcome = await syncCapture(capture);
     if (outcome.state === "synced" || outcome.state === "synced-duplicate") {
@@ -1619,24 +1523,6 @@
       });
       updateCompletionStatus(capture.id, "SAVED ON DEVICE · WILL SYNC AUTOMATICALLY", "warning");
     }
-  }
-  async function locateLatestPendingCapture() {
-    const items = readQueueLocal();
-    const index = items.map(item => (
-      !Number.isFinite(item.latitude) || !Number.isFinite(item.longitude)
-    )).lastIndexOf(true);
-    if (index < 0) return false;
-    const capture = {
-      ...items[index],
-      imageMetadata: { ...items[index].imageMetadata },
-      metadata: { ...items[index].metadata, locationConsent: "current" }
-    };
-    const nextItems = items.map((item, itemIndex) => itemIndex === index ? capture : item);
-    if (!writeQueueLocal(nextItems)) throw new Error("The saved finding could not be updated on this device.");
-    const location = await requestLocation({ timeoutMs: 8000, maximumAge: 0, force: true });
-    applyLocationToCapture(capture, location);
-    await queueCapture(capture);
-    return true;
   }
   async function flushQueue() {
     if (!navigator.onLine || state.syncing) return;
@@ -1723,7 +1609,6 @@
     updateCompletionStatus(capture.id, preview ? "PREVIEW ONLY · READY FOR FIELD MODE" : "SAVED ON DEVICE · SYNCING…", preview ? "" : "success");
     reward(xp);
     if (!preview) applyLocalReward(xp);
-    stopCamera();
     if (!elements.completionDialog.open) elements.completionDialog.showModal();
   }
   function resetForNextTree({ openCamera = true } = {}) {
@@ -1762,52 +1647,21 @@
           elements.captureHeadline.textContent = "CAMERA READY";
           elements.captureInstruction.textContent = "Aim at the next tree and tap capture";
           elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
-          requestLocation({ timeoutMs: 6000, maximumAge: 30000, force: true }).catch(() => null);
         }).catch(error => {
-          toast(`${error.message || "Camera unavailable"} Use Take a Photo instead.`, 5200);
+          toast(`${error.message || "Camera unavailable"} Choose an existing photo instead.`, 5200);
           if (!elements.permissionDialog.open) elements.permissionDialog.showModal();
         });
       } else {
-        elements.cameraPhotoInput.click();
+        enableCamera().then(() => {
+          elements.captureHeadline.textContent = "CAMERA READY";
+          elements.captureInstruction.textContent = "Aim at the next tree and tap capture";
+          elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
+        }).catch(() => {
+          if (!elements.permissionDialog.open) elements.permissionDialog.showModal();
+        });
       }
     }
     setTimeout(() => { state.resettingCapture = false; }, 0);
-  }
-  async function retryCompletionLocation() {
-    const captureId = state.completionCaptureId;
-    const capture = readQueueLocal().find(item => item.id === captureId);
-    if (!capture) {
-      updateCompletionStatus(captureId, "THIS FINDING IS NO LONGER WAITING ON THIS DEVICE", "warning");
-      return;
-    }
-    updateActiveCompletion(captureId, () => {
-      elements.completionLocationButton.disabled = true;
-      elements.completionLocationButton.textContent = "FINDING LOCATION…";
-      elements.discardCaptureButton.disabled = true;
-      elements.nextTreeButton.disabled = true;
-    });
-    try {
-      capture.metadata = { ...capture.metadata, locationConsent: "current" };
-      await queueCapture(capture);
-      updateCompletionStatus(captureId, "REQUESTING CURRENT LOCATION…", "success");
-      const location = await requestLocation({ timeoutMs: 8000, maximumAge: 0, force: true });
-      applyLocationToCapture(capture, location);
-      if (state.discardedCaptureIds.has(captureId)) return;
-      await queueCapture(capture);
-      updateActiveCompletion(captureId, () => {
-        elements.completionLocationButton.hidden = true;
-      });
-      await finalizeCapture(capture);
-    } catch (_error) {
-      updateCompletionStatus(captureId, "LOCATION WAS NOT ADDED · TAP TO TRY AGAIN", "warning");
-    } finally {
-      updateActiveCompletion(captureId, () => {
-        elements.completionLocationButton.disabled = false;
-        elements.completionLocationButton.textContent = "ADD CURRENT LOCATION + SYNC";
-        elements.discardCaptureButton.disabled = false;
-        elements.nextTreeButton.disabled = false;
-      });
-    }
   }
   async function discardCompletionCapture() {
     const captureId = state.completionCaptureId;
@@ -2001,7 +1855,6 @@
     recenterMap();
     if (state.mapView.perspective) {
       requestOrientation({ prompt: true }).catch(() => null);
-      requestLocation().catch(() => null);
     }
   }
   function mapPointerDown(event) {
@@ -2071,9 +1924,8 @@
   }
   function registerEvents() {
     elements.enableFieldMode.addEventListener("click", enableFieldMode);
-    elements.takePhotoButton.addEventListener("click", () => elements.cameraPhotoInput.click());
+    elements.takePhotoButton.addEventListener("click", enableFieldMode);
     elements.choosePhotoButton.addEventListener("click", () => elements.photoInput.click());
-    elements.cameraPhotoInput.addEventListener("change", choosePhoto);
     elements.photoInput.addEventListener("change", choosePhoto);
     elements.demoModeButton.addEventListener("click", startDemo);
     elements.captureButton.addEventListener("click", scanTree);
@@ -2082,27 +1934,12 @@
     elements.questsButton.addEventListener("click", () => elements.questsDialog.showModal());
     elements.leadersButton.addEventListener("click", () => { elements.leadersDialog.showModal(); renderLeaders("weekly"); });
     elements.syncButton.addEventListener("click", async () => {
-      const hasPendingLocation = readQueueLocal().some(capture => (
-        !Number.isFinite(capture.latitude) || !Number.isFinite(capture.longitude)
-      ));
-      if (hasPendingLocation) {
-        setSyncState("LOCATING");
-        try {
-          await locateLatestPendingCapture();
-          toast("Current location added to the latest saved finding.");
-        } catch (_error) {
-          toast("Location was not added. The finding remains safely saved on this device.");
-        }
-      }
       await Promise.all([loadSharedData({ fresh: true }), flushQueue()]);
       toast(state.queueCount ? `${state.queueCount} capture${state.queueCount === 1 ? "" : "s"} waiting for connection.` : "Shared inventory is up to date.");
     });
     elements.shareButton.addEventListener("click", shareFieldCard);
     elements.completionShareButton.addEventListener("click", shareFieldCard);
     elements.nextTreeButton.addEventListener("click", () => resetForNextTree({ openCamera: true }));
-    elements.completionLocationButton.addEventListener("click", () => retryCompletionLocation().catch(error => {
-      updateCompletionStatus(state.completionCaptureId, error.message, "warning");
-    }));
     elements.discardCaptureButton.addEventListener("click", discardCompletionCapture);
     elements.completionDialog.addEventListener("close", () => {
       if (!state.resettingCapture && state.analysis) resetForNextTree({ openCamera: false });
@@ -2139,6 +1976,13 @@
         clearMapGesture();
         stopCamera();
       } else if (!elements.choosePhotoButton.disabled && !state.scanning && !state.confirming) {
+        if (!state.uploadedImage && !state.demo && !hasLiveCamera()) {
+          enableCamera().then(() => {
+            elements.captureHeadline.textContent = "CAMERA READY";
+            elements.captureInstruction.textContent = "Aim at a tree and tap capture";
+            elements.captureButton.querySelector(".capture-label").textContent = "CAPTURE";
+          }).catch(() => null);
+        }
         flushQueue();
       }
     });

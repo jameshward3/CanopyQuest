@@ -364,7 +364,7 @@ test("derives stable compass headings for flat and upright devices", () => {
 
 test("service worker caches a fast shell and public map data", () => {
   const serviceWorker = fs.readFileSync(new URL("../sw.js", import.meta.url), "utf8");
-  assert.match(serviceWorker, /canopyquest-shell-v9/);
+  assert.match(serviceWorker, /canopyquest-shell-v10/);
   assert.match(serviceWorker, /canopyquest-data-v3/);
   assert.match(serviceWorker, /staleWhileRevalidate/);
   assert.match(serviceWorker, /tigerweb\.geo\.census\.gov/);
@@ -374,9 +374,12 @@ test("service worker caches a fast shell and public map data", () => {
   assert.doesNotMatch(shell, /og\.png|icon-512/);
 });
 
-test("capture interface includes durable completion and native camera paths", () => {
+test("capture interface keeps capture in-app and supports photo metadata", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /capture="environment"/);
+  const script = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.doesNotMatch(html, /capture="environment"/);
+  assert.match(html, /OPEN IN-APP CAMERA/);
+  assert.doesNotMatch(script, /navigator\.geolocation|getCurrentPosition/);
   assert.match(html, /id="confirmStatus"/);
   assert.match(html, /id="completionDialog"/);
   assert.match(html, /id="completionLocationButton"/);

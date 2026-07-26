@@ -16,7 +16,7 @@
   <link rel="icon" href="./icon-192.png">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="preconnect" href="https://orange-tree-database.vercel.app">
-  <link rel="stylesheet" href="./styles.css?v=3.2.0">
+  <link rel="stylesheet" href="./styles.css?v=3.2.1">
 </head>
 <body>
   <a class="skip-link" href="#captureButton">Skip to capture</a>
@@ -97,11 +97,11 @@
 
       <div class="field-strip" id="fieldStrip">
         <span>⌖</span>
-        <strong id="accuracyText">GPS —</strong>
+        <strong id="accuracyText">PHOTO LOCATION —</strong>
         <i>•</i>
         <strong id="wardText">WARD —</strong>
         <i>•</i>
-        <strong id="coordinatesText">LOCATION NEEDED</strong>
+        <strong id="coordinatesText">NO PHOTO LOCATION</strong>
       </div>
     </section>
 
@@ -136,17 +136,16 @@
       <button class="close-sheet" value="cancel" aria-label="Close">×</button>
       <p class="sheet-eyebrow">FIELD MODE</p>
       <h2>See a tree. Map its story.</h2>
-      <p>CanopyQuest uses your camera to estimate tree traits and your location to match the shared Orange inventory. We save only the submitted tree location—not your movement trail.</p>
+      <p>CanopyQuest keeps the camera inside the app while you scan. If a selected photo contains location metadata, that point can be used to match the shared Orange inventory.</p>
       <div class="permission-list">
-        <div><span>◉</span><p><strong>Camera</strong><small>Used only while you scan. Photos stay on your device in this preview.</small></p></div>
-        <div><span>⌖</span><p><strong>Precise location</strong><small>Required to verify the tree is inside Orange and prevent duplicates.</small></p></div>
+        <div><span>◉</span><p><strong>In-app camera</strong><small>Used only while you scan. The app will not send you to the phone’s Camera app.</small></p></div>
+        <div><span>⌖</span><p><strong>Photo location</strong><small>Read from a selected photo when the camera saved coordinates in its metadata.</small></p></div>
         <div><span>↗</span><p><strong>Direction</strong><small>Optional. Improves the heading cone and field record.</small></p></div>
       </div>
-      <button class="primary-button" id="takePhotoButton" type="button">TAKE A PHOTO</button>
-      <input id="cameraPhotoInput" type="file" accept="image/*" capture="environment" hidden>
-      <button class="secondary-button photo-button" id="choosePhotoButton" type="button">CHOOSE EXISTING PHOTO</button>
+      <button class="primary-button" id="takePhotoButton" type="button">OPEN IN-APP CAMERA</button>
+      <button class="secondary-button photo-button" id="choosePhotoButton" type="button">CHOOSE PHOTO WITH LOCATION</button>
       <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-      <button class="text-button field-mode-button" id="enableFieldMode" value="cancel" type="button">USE LIVE CAMERA + GPS</button>
+      <button class="text-button field-mode-button" id="enableFieldMode" value="cancel" type="button">USE IN-APP CAMERA</button>
       <button class="text-button" id="demoModeButton" value="cancel" type="button">Preview without permissions</button>
     </form>
   </dialog>
@@ -261,8 +260,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="reward-burst" id="rewardBurst" aria-hidden="true"><span>+120 XP</span><i></i><i></i><i></i><i></i><i></i></div>
 
-  <script src="./database-config.js?v=3.2.0"></script>
-  <script src="./ai-provider.js?v=3.2.0"></script>
-  <script src="./app.js?v=3.2.0"></script>
+  <script src="./database-config.js?v=3.2.1"></script>
+  <script src="./ai-provider.js?v=3.2.1"></script>
+  <script src="./app.js?v=3.2.1"></script>
 </body>
 </html>
